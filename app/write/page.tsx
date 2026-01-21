@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { JSONContent } from "@tiptap/core";
-import { Extension } from "@tiptap/core";
+import { Extension, mergeAttributes } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -27,6 +27,7 @@ export default function WritePage() {
     left: number;
   }>({ visible: false, top: 0, left: 0 });
   const [selectionVersion, setSelectionVersion] = React.useState(0);
+  const isComposingRef = React.useRef(false);
   const editorWrapRef = React.useRef<HTMLDivElement | null>(null);
 
   const handleCopy = React.useCallback(
@@ -45,6 +46,31 @@ export default function WritePage() {
 
   const lowlight = React.useMemo(() => createLowlight(common), []);
 
+  const CodeBlockWithLabel = React.useMemo(
+    () =>
+      CodeBlockLowlight.extend({
+        renderHTML({ node, HTMLAttributes }) {
+          const language = node.attrs.language || "plain";
+          return [
+            "pre",
+            mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+              "data-language": language,
+            }),
+            [
+              "code",
+              {
+                class: node.attrs.language
+                  ? `${this.options.languageClassPrefix}${node.attrs.language}`
+                  : null,
+              },
+              0,
+            ],
+          ];
+        },
+      }),
+    []
+  );
+
   const AutoPairs = React.useMemo(
     () =>
       Extension.create({
@@ -53,18 +79,21 @@ export default function WritePage() {
         addKeyboardShortcuts() {
           const insertPair = (open: string, close: string) =>
             this.editor.commands.command(({ tr, state, dispatch }) => {
+              if (isComposingRef.current) return false;
               const { from, to } = state.selection;
               const nextChar =
                 from < state.doc.content.size
                   ? state.doc.textBetween(from, from + 1, "\n", "\n")
                   : "";
+              const prevChar =
+                from > 0 ? state.doc.textBetween(from - 1, from, "\n", "\n") : "";
               if (from !== to) {
                 tr.insertText(open, from, from);
                 tr.insertText(close, to + open.length, to + open.length);
                 tr.setSelection(
                   TextSelection.create(tr.doc, from + open.length, to + open.length)
                 );
-              } else if (nextChar === close) {
+              } else if (open === close && prevChar === open && nextChar === close) {
                 tr.setSelection(TextSelection.create(tr.doc, from + 1));
               } else {
                 tr.insertText(open + close, from, to);
@@ -76,6 +105,7 @@ export default function WritePage() {
 
           const skipOrInsertClose = (close: string) =>
             this.editor.commands.command(({ tr, state, dispatch }) => {
+              if (isComposingRef.current) return false;
               const { from, to } = state.selection;
               if (from !== to) return false;
               const nextChar =
@@ -93,6 +123,7 @@ export default function WritePage() {
             });
 
           const handleEnter = () => {
+            if (isComposingRef.current) return false;
             if (this.editor.isActive("codeBlock")) {
               const { state } = this.editor;
               const { from } = state.selection;
@@ -113,6 +144,11 @@ export default function WritePage() {
                 this.editor.commands.setTextSelection(from + indent.length + 3);
                 return true;
               }
+              if (beforeChar === "{" && afterChar !== "}") {
+                this.editor.commands.insertContent(`\n${indent}  \n${indent}}`);
+                this.editor.commands.setTextSelection(from + indent.length + 3);
+                return true;
+              }
 
               const extra = currentLine.trim().endsWith("{") ? "  " : "";
               this.editor.commands.insertContent(`\n${indent}${extra}`);
@@ -129,6 +165,7 @@ export default function WritePage() {
           };
 
           const insertIndent = () => {
+            if (isComposingRef.current) return false;
             if (!this.editor.isActive("codeBlock")) return false;
             const { state } = this.editor;
             const { from } = state.selection;
@@ -157,6 +194,7 @@ export default function WritePage() {
 
           const deletePair = (open: string, close: string) =>
             this.editor.commands.command(({ tr, state, dispatch }) => {
+              if (isComposingRef.current) return false;
               const { from, to } = state.selection;
               if (from !== to) return false;
               const before = from > 0 ? state.doc.textBetween(from - 1, from, "\n", "\n") : "";
@@ -194,7 +232,7 @@ export default function WritePage() {
       StarterKit.configure({
         codeBlock: false,
       }),
-      CodeBlockLowlight.configure({ lowlight }),
+      CodeBlockWithLabel.configure({ lowlight, defaultLanguage: "plain" }),
       Table.configure({
         resizable: false,
       }),
@@ -203,7 +241,7 @@ export default function WritePage() {
       TableCell,
       AutoPairs,
     ],
-    [AutoPairs, lowlight]
+    [AutoPairs, CodeBlockWithLabel, lowlight]
   );
 
   const editor = useEditor({
@@ -260,6 +298,14 @@ export default function WritePage() {
       },
       handleDOMEvents: {
         copy: (view, event) => handleCopy(view, event),
+        compositionstart: () => {
+          isComposingRef.current = true;
+          return false;
+        },
+        compositionend: () => {
+          isComposingRef.current = false;
+          return false;
+        },
       },
     },
   });
@@ -295,6 +341,7 @@ export default function WritePage() {
   React.useEffect(() => {
     if (!editor) return;
     const update = () => {
+      if (editor.view.composing) return;
       setSelectionVersion((v) => v + 1);
       const wrap = editorWrapRef.current;
       if (!wrap) return;
@@ -338,52 +385,38 @@ export default function WritePage() {
         const match = className.match(/language-([a-z0-9_-]+)/i);
         const language = match?.[1] ?? "plain";
         block.setAttribute("data-language", language);
-
-        const existing = block.querySelector(".code-actions");
+        const existing = block.querySelector(":scope > .code-actions");
         if (existing) {
-          const langWrap = existing.querySelector(".code-action-lang");
-          if (langWrap) langWrap.remove();
-          existing.querySelectorAll(".code-action-lang-btn, .code-action-select").forEach((el) => {
-            el.remove();
-          });
-          const langButton = existing.querySelector(
-            ".code-action-lang-btn"
-          ) as HTMLButtonElement | null;
-          const select = existing.querySelector(
-            ".code-action-select"
-          ) as HTMLSelectElement | null;
           const label = existing.querySelector(
             ".code-language-label"
           ) as HTMLSpanElement | null;
-          if (langButton) langButton.title = `language: ${language}`;
-          if (select) select.value = language === "plain" ? "plaintext" : language;
           if (label) label.textContent = language;
           return;
         }
 
+        if (!options.withCopy) return;
+
         const actions = document.createElement("div");
-        actions.className = options.editor ? "code-actions code-actions-editor" : "code-actions code-actions-preview";
+        actions.className = "code-actions code-actions-preview";
 
         const label = document.createElement("span");
         label.className = "code-language-label";
         label.textContent = language;
         actions.appendChild(label);
 
-        if (options.withCopy) {
-          const copy = document.createElement("button");
-          copy.type = "button";
-          copy.className = "code-action-btn code-action-copy";
-          copy.setAttribute("aria-label", "코드 복사");
-          copy.title = "복사";
-          copy.addEventListener("click", () => {
-            const text = code?.textContent ?? "";
-            navigator.clipboard?.writeText(text);
-          });
-          const copyWrap = document.createElement("div");
-          copyWrap.className = "code-action copy";
-          copyWrap.appendChild(copy);
-          actions.appendChild(copyWrap);
-        }
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "code-action-btn code-action-copy";
+        copy.setAttribute("aria-label", "코드 복사");
+        copy.title = "복사";
+        copy.addEventListener("click", () => {
+          const text = code?.textContent ?? "";
+          navigator.clipboard?.writeText(text);
+        });
+        const copyWrap = document.createElement("div");
+        copyWrap.className = "code-action copy";
+        copyWrap.appendChild(copy);
+        actions.appendChild(copyWrap);
 
         block.appendChild(actions);
       });
@@ -397,12 +430,6 @@ export default function WritePage() {
       const json = liveEditor.getJSON() as JSONContent;
       previewEditor?.commands.setContent(json, { emitUpdate: false });
       setIsEmpty(liveEditor.isEmpty);
-      if (liveEditor?.view?.dom) {
-        applyCodeBlockDecorations(liveEditor.view.dom, {
-          withCopy: false,
-          editor: liveEditor,
-        });
-      }
       if (previewEditor?.view?.dom) {
         applyCodeBlockDecorations(previewEditor.view.dom, {
           withCopy: true,
