@@ -2,6 +2,8 @@ type MarkdownOptions = {
   highlight?: boolean;
 };
 
+// Note: code-block UI actions (language selector/copy) live in `app/write/page.tsx` with TipTap.
+
 const JS_KEYWORDS =
   /\b(const|let|var|function|return|import|export|default|type|interface|class|extends|implements|async|await|if|else|for|while|switch|case|break|continue|new|try|catch|throw)\b/g;
 
@@ -53,7 +55,14 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
     const raw = lines[i];
     const line = raw.trim();
 
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
+      blocks.push('<hr class="md-hr" />');
+      i += 1;
+      continue;
+    }
+
     if (!line) {
+      blocks.push("<br />");
       i += 1;
       continue;
     }
@@ -125,6 +134,7 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
         current.startsWith("> ") ||
         current.startsWith("- ") ||
         current.startsWith("* ") ||
+        /^(-{3,}|\*{3,}|_{3,})$/.test(current) ||
         current.startsWith("```")
       ) {
         break;
@@ -132,8 +142,76 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
       paragraphLines.push(current);
       i += 1;
     }
-    blocks.push(`<p class="md-p">${formatInline(paragraphLines.join(" "))}</p>`);
+    const paragraph = paragraphLines.map((text) => formatInline(text)).join("<br />");
+    blocks.push(`<p class="md-p">${paragraph}</p>`);
   }
 
   return blocks.join("");
+}
+
+// Server-side renderer for stored markdown content.
+export function renderMarkdown(markdown: string) {
+  return markdownToHtml(markdown, { highlight: true });
+}
+
+type EditorLine = {
+  className: string;
+  html: string;
+};
+
+function formatEditorInline(value: string) {
+  let text = escapeHtml(value);
+  text = text.replace(/\*\*([^*]+)\*\*/g, (_m, bold) => {
+    return `<span class="md-editor-bold">**${bold}**</span>`;
+  });
+  text = text.replace(/\*([^*]+)\*/g, (_m, italic) => {
+    return `<span class="md-editor-italic">*${italic}*</span>`;
+  });
+  text = text.replace(/`([^`]+)`/g, (_m, code) => {
+    return `<span class="md-editor-code">\`${code}\`</span>`;
+  });
+  return text;
+}
+
+export function markdownToEditorHtml(markdown: string) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks: EditorLine[] = [];
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      blocks.push({ className: "md-editor-line", html: "<br />" });
+      return;
+    }
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      blocks.push({ className: "md-editor-line md-editor-hr", html: trimmed });
+      return;
+    }
+    if (trimmed.startsWith("### ")) {
+      blocks.push({
+        className: "md-editor-line md-editor-h3",
+        html: formatEditorInline(line),
+      });
+      return;
+    }
+    if (trimmed.startsWith("## ")) {
+      blocks.push({
+        className: "md-editor-line md-editor-h2",
+        html: formatEditorInline(line),
+      });
+      return;
+    }
+    if (trimmed.startsWith("# ")) {
+      blocks.push({
+        className: "md-editor-line md-editor-h1",
+        html: formatEditorInline(line),
+      });
+      return;
+    }
+    blocks.push({ className: "md-editor-line", html: formatEditorInline(line) });
+  });
+
+  return blocks
+    .map((block) => `<div class="${block.className}">${block.html}</div>`)
+    .join("");
 }

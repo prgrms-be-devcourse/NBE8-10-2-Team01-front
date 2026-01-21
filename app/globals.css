@@ -24,3 +24,503 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.md-h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 0.75rem;
+}
+
+.md-h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 1.2rem 0 0.6rem;
+}
+
+.md-h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 1rem 0 0.5rem;
+}
+
+.md-p {
+  color: #1f2937;
+  line-height: 1.75rem;
+  margin: 0.4rem 0;
+}
+
+.md-placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.md-list {
+  list-style: disc;
+  padding-left: 1.25rem;
+  color: #1f2937;
+  margin: 0.6rem 0;
+}
+
+.md-quote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 0.75rem;
+  color: #4b5563;
+  margin: 0.8rem 0;
+}
+
+.md-hr {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin: 2rem 0;
+}
+
+.md-editor {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.md-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #d1d5db;
+}
+
+.md-editor-line {
+  white-space: pre-wrap;
+}
+
+.md-editor-h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.md-editor-h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.md-editor-h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.md-editor-bold {
+  font-weight: 700;
+}
+
+.md-editor-italic {
+  font-style: italic;
+}
+
+.md-editor-code {
+  font-family: "SFMono-Regular", "Cascadia Code", "Fira Code", ui-monospace,
+    monospace;
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+}
+
+.md-editor-hr {
+  color: #9ca3af;
+  letter-spacing: 0.2em;
+  margin: 1.6rem 0;
+}
+
+.md-link {
+  color: #0f766e;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-inline-code {
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+}
+
+.md-code {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 12px;
+  overflow: auto;
+  margin: 0.8rem 0;
+}
+
+.md-code-inner {
+  font-family: "SFMono-Regular", "Cascadia Code", "Fira Code", ui-monospace,
+    monospace;
+  font-size: 0.85rem;
+}
+
+.token.keyword {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.mde-clean.w-md-editor {
+  background: transparent;
+  box-shadow: none;
+}
+
+.mde-clean .w-md-editor-toolbar {
+  border: 0;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(12px);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.mde-clean .w-md-editor-toolbar button {
+  border-radius: 999px;
+  margin: 0 0.1rem;
+}
+
+.mde-clean .w-md-editor-content {
+  background: transparent;
+}
+
+.mde-clean .w-md-editor-text {
+  background: transparent;
+  box-shadow: none;
+  color: #0f172a;
+  font-size: 1rem;
+  line-height: 1.9rem;
+}
+
+.mde-clean .w-md-editor-text textarea {
+  padding: 0.4rem 0.6rem;
+}
+
+.mde-clean .w-md-editor-preview {
+  background: transparent;
+}
+
+.toolbar-pill {
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid transparent;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.toolbar-pill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+.toolbar-pill.is-active {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+
+.tiptap-editor {
+  min-height: 60vh;
+  outline: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  line-height: 1.9rem;
+  color: #0f172a;
+  white-space: pre-wrap;
+}
+
+.tiptap-editor h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 1.2rem 0 0.8rem;
+}
+
+.tiptap-editor h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1rem 0 0.6rem;
+}
+
+.tiptap-editor h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0.8rem 0 0.5rem;
+}
+
+.tiptap-editor p {
+  margin: 0.35rem 0;
+}
+
+.tiptap-editor p:empty::before {
+  content: "\00a0";
+}
+
+.tiptap-editor ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+
+.tiptap-editor ol {
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+
+.tiptap-editor code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.tiptap-editor pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 2.2rem 1rem 1rem;
+  border-radius: 12px;
+  overflow: auto;
+  margin: 1.1rem 0;
+  position: relative;
+}
+
+.tiptap-editor pre + pre {
+  margin-top: 1.8rem;
+}
+
+.tiptap-editor pre code {
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.tiptap-editor pre code .hljs-comment,
+.tiptap-editor pre code .hljs-quote {
+  color: #94a3b8;
+}
+
+.tiptap-editor pre code .hljs-keyword,
+.tiptap-editor pre code .hljs-selector-tag,
+.tiptap-editor pre code .hljs-subst {
+  color: #c084fc;
+}
+
+.tiptap-editor pre code .hljs-string,
+.tiptap-editor pre code .hljs-title,
+.tiptap-editor pre code .hljs-name,
+.tiptap-editor pre code .hljs-type,
+.tiptap-editor pre code .hljs-attribute,
+.tiptap-editor pre code .hljs-symbol,
+.tiptap-editor pre code .hljs-bullet,
+.tiptap-editor pre code .hljs-built_in,
+.tiptap-editor pre code .hljs-addition,
+.tiptap-editor pre code .hljs-variable,
+.tiptap-editor pre code .hljs-template-tag,
+.tiptap-editor pre code .hljs-template-variable {
+  color: #7dd3fc;
+}
+
+.tiptap-editor pre code .hljs-number,
+.tiptap-editor pre code .hljs-literal,
+.tiptap-editor pre code .hljs-params,
+.tiptap-editor pre code .hljs-meta {
+  color: #fbbf24;
+}
+
+.tiptap-editor pre code .hljs-function,
+.tiptap-editor pre code .hljs-class,
+.tiptap-editor pre code .hljs-section {
+  color: #a7f3d0;
+}
+
+.tiptap-preview {
+  font-size: 1rem;
+  line-height: 1.9rem;
+  color: #0f172a;
+}
+
+.tiptap-preview h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 1.2rem 0 0.8rem;
+}
+
+.tiptap-preview h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1rem 0 0.6rem;
+}
+
+.tiptap-preview h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0.8rem 0 0.5rem;
+}
+
+.tiptap-preview p {
+  margin: 0.35rem 0;
+}
+
+.tiptap-preview p:empty::before {
+  content: "\00a0";
+}
+
+.tiptap-preview ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+
+.tiptap-preview ol {
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+
+.tiptap-preview code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.tiptap-preview pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 2.2rem 1rem 1rem;
+  border-radius: 12px;
+  overflow: auto;
+  margin: 1.1rem 0;
+  position: relative;
+}
+
+.tiptap-preview pre + pre {
+  margin-top: 1.8rem;
+}
+
+.tiptap-preview pre code {
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.tiptap-preview pre code .hljs-comment,
+.tiptap-preview pre code .hljs-quote {
+  color: #94a3b8;
+}
+
+.tiptap-preview pre code .hljs-keyword,
+.tiptap-preview pre code .hljs-selector-tag,
+.tiptap-preview pre code .hljs-subst {
+  color: #c084fc;
+}
+
+.tiptap-preview pre code .hljs-string,
+.tiptap-preview pre code .hljs-title,
+.tiptap-preview pre code .hljs-name,
+.tiptap-preview pre code .hljs-type,
+.tiptap-preview pre code .hljs-attribute,
+.tiptap-preview pre code .hljs-symbol,
+.tiptap-preview pre code .hljs-bullet,
+.tiptap-preview pre code .hljs-built_in,
+.tiptap-preview pre code .hljs-addition,
+.tiptap-preview pre code .hljs-variable,
+.tiptap-preview pre code .hljs-template-tag,
+.tiptap-preview pre code .hljs-template-variable {
+  color: #7dd3fc;
+}
+
+.tiptap-preview pre code .hljs-number,
+.tiptap-preview pre code .hljs-literal,
+.tiptap-preview pre code .hljs-params,
+.tiptap-preview pre code .hljs-meta {
+  color: #fbbf24;
+}
+
+.tiptap-preview pre code .hljs-function,
+.tiptap-preview pre code .hljs-class,
+.tiptap-preview pre code .hljs-section {
+  color: #a7f3d0;
+}
+.code-actions {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.6rem;
+  right: 0.6rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.code-language-label {
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #e2e8f0;
+  background: transparent;
+  box-shadow: none;
+  line-height: 1;
+}
+
+.code-action {
+  position: relative;
+}
+
+.code-action.lang {
+  margin-right: auto;
+}
+
+.code-action.copy {
+  margin-left: auto;
+}
+
+.code-action-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  position: relative;
+}
+
+.code-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+
+.code-action-copy::before,
+.code-action-copy::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 11px;
+  border: 2px solid #0f172a;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.code-action-copy::before {
+  top: 6px;
+  left: 9px;
+}
+
+.code-action-copy::after {
+  top: 8px;
+  left: 11px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.code-action-select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
