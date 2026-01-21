@@ -1,3 +1,5 @@
+import type { Fragment, Node as ProseMirrorNode, Slice } from "prosemirror-model";
+
 type MarkdownOptions = {
   highlight?: boolean;
   preserveEmptyLines?: boolean;
@@ -56,6 +58,51 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
   while (i < lines.length) {
     const raw = lines[i];
     const line = raw.trim();
+
+    if (line.includes("|") && i + 1 < lines.length) {
+      const next = lines[i + 1].trim();
+      const isSeparator = /^(\|?\s*:?-+:?\s*\|)+\s*:?-+:?\s*$/.test(next);
+      if (isSeparator) {
+        const header = raw;
+        const rows: string[] = [];
+        i += 2;
+        while (i < lines.length && lines[i].includes("|")) {
+          if (!lines[i].trim()) break;
+          rows.push(lines[i]);
+          i += 1;
+        }
+
+        const splitRow = (row: string) =>
+          row
+            .trim()
+            .replace(/^\|/, "")
+            .replace(/\|$/, "")
+            .split("|")
+            .map((cell) => cell.trim());
+
+        const headerCells = splitRow(header);
+        const bodyRows = rows.map(splitRow);
+
+        const thead =
+          "<thead><tr>" +
+          headerCells.map((cell) => `<th>${formatInline(cell)}</th>`).join("") +
+          "</tr></thead>";
+        const tbody =
+          "<tbody>" +
+          bodyRows
+            .map(
+              (row) =>
+                "<tr>" +
+                row.map((cell) => `<td>${formatInline(cell)}</td>`).join("") +
+                "</tr>"
+            )
+            .join("") +
+          "</tbody>";
+
+        blocks.push(`<table class="md-table">${thead}${tbody}</table>`);
+        continue;
+      }
+    }
 
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
       blocks.push('<hr class="md-hr" />');
@@ -156,6 +203,129 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
 // Server-side renderer for stored markdown content.
 export function renderMarkdown(markdown: string) {
   return markdownToHtml(markdown, { highlight: true });
+}
+
+function serializeInline(node: ProseMirrorNode): string {
+  if (node.type.name === "text") {
+    const text = node.text ?? "";
+    const marks = node.marks ?? [];
+    const hasCode = marks.some((mark) => mark.type.name === "code");
+    if (hasCode) {
+      return `\`${text}\``;
+    }
+    const hasBold = marks.some((mark) => mark.type.name === "bold");
+    const hasItalic = marks.some((mark) => mark.type.name === "italic");
+    let out = text;
+    if (hasBold && hasItalic) out = `***${out}***`;
+    else if (hasBold) out = `**${out}**`;
+    else if (hasItalic) out = `*${out}*`;
+    return out;
+  }
+  if (node.type.name === "hardBreak") {
+    return "\n";
+  }
+  let text = "";
+  node.forEach((child) => {
+    text += serializeInline(child);
+  });
+  return text;
+}
+
+function serializeBlock(node: ProseMirrorNode, orderedIndex = 1): string | null {
+  switch (node.type.name) {
+    case "paragraph": {
+      const text = serializeInline(node).trimEnd();
+      return text;
+    }
+    case "heading": {
+      const level = node.attrs.level ?? 1;
+      const text = serializeInline(node).trim();
+      return `${"#".repeat(level)} ${text}`;
+    }
+    case "blockquote": {
+      const inner = serializeFragment(node.content)
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+      return inner;
+    }
+    case "bulletList": {
+      const lines: string[] = [];
+      node.forEach((child) => {
+        const item = serializeBlock(child);
+        if (item) lines.push(`- ${item}`);
+      });
+      return lines.join("\n");
+    }
+    case "orderedList": {
+      const lines: string[] = [];
+      let index = orderedIndex;
+      node.forEach((child) => {
+        const item = serializeBlock(child);
+        if (item) lines.push(`${index}. ${item}`);
+        index += 1;
+      });
+      return lines.join("\n");
+    }
+    case "listItem": {
+      let text = "";
+      node.forEach((child) => {
+        if (child.type.name === "paragraph") {
+          text = serializeInline(child).trim();
+        }
+      });
+      return text;
+    }
+    case "codeBlock": {
+      const language = node.attrs.language ? `${node.attrs.language}` : "";
+      const code = node.textContent ?? "";
+      return `\`\`\`${language}\n${code}\n\`\`\``;
+    }
+    case "horizontalRule": {
+      return "---";
+    }
+    case "table": {
+      const rows: string[] = [];
+      node.forEach((row) => {
+        const cells: string[] = [];
+        row.forEach((cell) => {
+          cells.push(serializeInline(cell).trim());
+        });
+        rows.push(`| ${cells.join(" | ")} |`);
+      });
+      if (rows.length >= 2) {
+        const separator = rows[0]
+          .split("|")
+          .filter((cell) => cell.trim())
+          .map(() => "---")
+          .join(" | ");
+        rows.splice(1, 0, `| ${separator} |`);
+      }
+      return rows.join("\n");
+    }
+    default: {
+      if (node.isTextblock) {
+        const text = serializeInline(node).trimEnd();
+        return text || null;
+      }
+      return null;
+    }
+  }
+}
+
+function serializeFragment(fragment: Fragment): string {
+  const blocks: string[] = [];
+  fragment.forEach((node) => {
+    const block = serializeBlock(node);
+    if (block !== null) {
+      blocks.push(block);
+    }
+  });
+  return blocks.join("\n\n");
+}
+
+export function sliceToMarkdown(slice: Slice): string {
+  return serializeFragment(slice.content).trim();
 }
 
 type EditorLine = {

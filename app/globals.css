@@ -224,6 +224,35 @@ body {
   color: #ffffff;
 }
 
+.table-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.table-action-btn {
+  border: 0;
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.table-action-btn:hover {
+  color: #111827;
+}
+
+.table-actions-inline {
+  position: absolute;
+  margin: 0;
+  padding-left: 0.2rem;
+  z-index: 5;
+}
+
 
 .tiptap-editor {
   min-height: 60vh;
@@ -377,6 +406,33 @@ body {
 .tiptap-preview ol {
   padding-left: 1.25rem;
   list-style: decimal;
+}
+
+.tiptap-editor table,
+.tiptap-preview table,
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.95rem;
+}
+
+.tiptap-editor th,
+.tiptap-editor td,
+.tiptap-preview th,
+.tiptap-preview td,
+.md-table th,
+.md-table td {
+  border: 1px solid #94a3b8;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.tiptap-editor th,
+.tiptap-preview th,
+.md-table th {
+  background: #f8fafc;
+  font-weight: 700;
 }
 
 .tiptap-preview code {
