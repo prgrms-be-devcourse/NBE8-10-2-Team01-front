@@ -8,12 +8,133 @@ import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { common, createLowlight } from "lowlight";
 import { TextSelection } from "prosemirror-state";
+import { DOMParser, type Node as ProseMirrorNode, type Fragment, type Slice } from "prosemirror-model";
+import type { EditorView } from "prosemirror-view";
+import { markdownToHtml } from "@/lib/markdown";
+
+function serializeInline(node: ProseMirrorNode): string {
+  if (node.type.name === "text") {
+    const text = node.text ?? "";
+    const marks = node.marks ?? [];
+    const hasCode = marks.some((mark) => mark.type.name === "code");
+    if (hasCode) {
+      return `\`${text}\``;
+    }
+    const hasBold = marks.some((mark) => mark.type.name === "bold");
+    const hasItalic = marks.some((mark) => mark.type.name === "italic");
+    let out = text;
+    if (hasBold && hasItalic) out = `***${out}***`;
+    else if (hasBold) out = `**${out}**`;
+    else if (hasItalic) out = `*${out}*`;
+    return out;
+  }
+  if (node.type.name === "hardBreak") {
+    return "\n";
+  }
+  let text = "";
+  node.forEach((child) => {
+    text += serializeInline(child);
+  });
+  return text;
+}
+
+function serializeBlock(node: ProseMirrorNode, orderedIndex = 1): string | null {
+  switch (node.type.name) {
+    case "paragraph": {
+      const text = serializeInline(node).trimEnd();
+      return text;
+    }
+    case "heading": {
+      const level = node.attrs.level ?? 1;
+      const text = serializeInline(node).trim();
+      return `${"#".repeat(level)} ${text}`;
+    }
+    case "blockquote": {
+      const inner = serializeFragment(node.content)
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+      return inner;
+    }
+    case "bulletList": {
+      const lines: string[] = [];
+      node.forEach((child) => {
+        const item = serializeBlock(child);
+        if (item) lines.push(`- ${item}`);
+      });
+      return lines.join("\n");
+    }
+    case "orderedList": {
+      const lines: string[] = [];
+      let index = orderedIndex;
+      node.forEach((child) => {
+        const item = serializeBlock(child);
+        if (item) lines.push(`${index}. ${item}`);
+        index += 1;
+      });
+      return lines.join("\n");
+    }
+    case "listItem": {
+      let text = "";
+      node.forEach((child) => {
+        if (child.type.name === "paragraph") {
+          text = serializeInline(child).trim();
+        }
+      });
+      return text;
+    }
+    case "codeBlock": {
+      const language = node.attrs.language ? `${node.attrs.language}` : "";
+      const code = node.textContent ?? "";
+      return `\`\`\`${language}\n${code}\n\`\`\``;
+    }
+    case "horizontalRule": {
+      return "---";
+    }
+    default: {
+      if (node.isTextblock) {
+        const text = serializeInline(node).trimEnd();
+        return text || null;
+      }
+      return null;
+    }
+  }
+}
+
+function serializeFragment(fragment: Fragment): string {
+  const blocks: string[] = [];
+  fragment.forEach((node) => {
+    const block = serializeBlock(node);
+    if (block !== null) {
+      blocks.push(block);
+    }
+  });
+  return blocks.join("\n\n");
+}
+
+function sliceToMarkdown(slice: Slice): string {
+  return serializeFragment(slice.content).trim();
+}
 
 export default function WritePage() {
   const [title, setTitle] = React.useState("");
   const [tagInput, setTagInput] = React.useState("");
   const [tags, setTags] = React.useState<string[]>([]);
   const [isEmpty, setIsEmpty] = React.useState(true);
+
+  const handleCopy = React.useCallback(
+    (view: EditorView, event: ClipboardEvent) => {
+      const selection = view.state.selection;
+      if (selection.empty) return false;
+      const slice = selection.content();
+      const markdown = sliceToMarkdown(slice);
+      if (!markdown) return false;
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", markdown);
+      return true;
+    },
+    []
+  );
 
   const lowlight = React.useMemo(() => createLowlight(common), []);
 
@@ -143,6 +264,26 @@ export default function WritePage() {
       attributes: {
         class: "tiptap-editor",
       },
+      handlePaste: (view, event) => {
+        const text = event.clipboardData?.getData("text/plain") ?? "";
+        const hasMarkdown =
+          /(^|\n)#{1,6}\s/.test(text) ||
+          /(^|\n)\d+\.\s/.test(text) ||
+          /(^|\n)(-|\*)\s/.test(text) ||
+          /(^|\n)>\s/.test(text) ||
+          /```/.test(text);
+        if (!hasMarkdown) return false;
+        const html = markdownToHtml(text, { preserveEmptyLines: false });
+        const parser = DOMParser.fromSchema(view.state.schema);
+        const dom = new window.DOMParser().parseFromString(html, "text/html");
+        const slice = parser.parseSlice(dom.body);
+        const tr = view.state.tr.replaceSelection(slice).scrollIntoView();
+        view.dispatch(tr);
+        return true;
+      },
+      handleDOMEvents: {
+        copy: (view, event) => handleCopy(view, event),
+      },
     },
   });
 
@@ -154,6 +295,9 @@ export default function WritePage() {
     editorProps: {
       attributes: {
         class: "tiptap-editor tiptap-preview",
+      },
+      handleDOMEvents: {
+        copy: (view, event) => handleCopy(view, event),
       },
     },
   });
@@ -272,8 +416,8 @@ export default function WritePage() {
           '"Manrope", "Space Grotesk", "Noto Sans KR", "Pretendard", sans-serif',
       }}
     >
-      <section className="grid flex-1 grid-cols-1 lg:grid-cols-2">
-        <div className="flex h-full flex-col gap-4 overflow-auto bg-white/70 p-6 backdrop-blur">
+      <section className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-2">
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto bg-white/70 p-6 backdrop-blur">
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -309,7 +453,7 @@ export default function WritePage() {
             </div>
           </div>
 
-          <div className="flex-1">
+          <div className="flex-1 min-h-0">
             <div className="flex flex-wrap items-center gap-2 pb-3">
               <button
                 type="button"
@@ -361,7 +505,7 @@ export default function WritePage() {
                 Code
               </button>
             </div>
-            <div className="relative min-h-[60vh]">
+            <div className="relative min-h-0 flex-1">
               {isEmpty && (
                 <div className="pointer-events-none absolute left-2 top-2 text-neutral-400">
                   본문을 입력하세요. (Markdown 지원)
@@ -372,7 +516,7 @@ export default function WritePage() {
           </div>
         </div>
 
-        <div className="flex h-full flex-col overflow-auto bg-white/90 p-6 backdrop-blur">
+        <div className="flex h-full min-h-0 flex-col overflow-auto bg-white/90 p-6 backdrop-blur">
           <div className="flex flex-col gap-4">
             <div className="min-h-[3.5rem] border-b border-transparent pb-1 text-2xl font-semibold text-neutral-900">
               {title || <span className="text-neutral-300">제목 미리보기</span>}
@@ -394,7 +538,7 @@ export default function WritePage() {
               )}
             </div>
           </div>
-          <div className="pt-6">
+          <div className="flex-1 min-h-0 pt-6">
             {isEmpty ? (
               <p className="text-neutral-300">오른쪽에 미리보기가 표시됩니다.</p>
             ) : (

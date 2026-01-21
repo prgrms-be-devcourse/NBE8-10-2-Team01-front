@@ -1,5 +1,6 @@
 type MarkdownOptions = {
   highlight?: boolean;
+  preserveEmptyLines?: boolean;
 };
 
 // Note: code-block UI actions (language selector/copy) live in `app/write/page.tsx` with TipTap.
@@ -50,6 +51,7 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: string[] = [];
   let i = 0;
+  const preserveEmptyLines = options.preserveEmptyLines ?? true;
 
   while (i < lines.length) {
     const raw = lines[i];
@@ -62,7 +64,9 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
     }
 
     if (!line) {
-      blocks.push("<br />");
+      if (preserveEmptyLines) {
+        blocks.push("<br />");
+      }
       i += 1;
       continue;
     }
