@@ -25,6 +25,9 @@ type TextInputProps = {
   /** input type (기본 text) */
   type?: React.HTMLInputTypeAttribute;
 
+  /** 필수 여부 */
+  required?: boolean;
+
   /** tailwind class 확장 */
   className?: string;
 };
@@ -37,11 +40,15 @@ export function TextInput({
   onChange,
   disabled,
   type = "text",
+  required,
   className,
 }: TextInputProps) {
   return (
     <label className={cn("flex w-full flex-col gap-2", className)}>
-      <span className="text-sm font-bold text-black">{label}</span>
+      <span className="text-sm font-bold text-black">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
+      </span>
       <input
         name={name}
         type={type}
@@ -49,6 +56,7 @@ export function TextInput({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        required={required}
         className={cn(
           "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm",
           "placeholder:text-neutral-400",

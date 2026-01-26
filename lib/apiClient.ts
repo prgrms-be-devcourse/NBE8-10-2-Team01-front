@@ -43,6 +43,7 @@
 "use client";
 
 import { API_BASE_URL } from "@/lib/apiConfig";
+import { setToken } from "@/lib/auth";
 
 export class ApiError extends Error {
   status: number;
@@ -120,13 +121,22 @@ export async function request<T = unknown>(
   }
 
   const response = await fetch(url.toString(), init);
+
+  // Automatic token re-issuance
+  const newAuthHeader = response.headers.get("Authorization");
+  if (newAuthHeader && newAuthHeader.startsWith("Bearer ")) {
+    const newToken = newAuthHeader.substring(7);
+    setToken(newToken);
+  }
+
   const contentType = response.headers.get("content-type") ?? "";
   const data = contentType.includes("application/json")
     ? await response.json()
     : await response.text();
 
   if (!response.ok) {
-    throw new ApiError("Request failed", response.status, data);
+    const errorMessage = (data as any)?.message || "Request failed";
+    throw new ApiError(errorMessage, response.status, data);
   }
 
   const envelope = data as ApiEnvelope<unknown>;
