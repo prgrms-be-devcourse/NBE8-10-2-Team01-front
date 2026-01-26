@@ -10,6 +10,7 @@ type PasswordInputProps = {
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  required?: boolean;
   className?: string;
 };
 
