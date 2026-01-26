@@ -43,65 +43,56 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex min-h-full flex-col justify-center bg-zinc-50 py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-neutral-900">
-          회원가입
-        </h2>
-        <p className="mt-2 text-center text-sm text-neutral-600">
-          이미 계정이 있으신가요?{" "}
-          <Link
-            href="/signin"
-            className="font-medium text-amber-600 hover:text-amber-500"
-          >
-            로그인
-          </Link>
-        </p>
-      </div>
+    <div className="w-full min-h-screen bg-zinc-50 flex items-center justify-center p-4  pt-16">
+      <div className="w-full max-w-md">
+        <div>
+          <h2 className="text-center text-3xl font-bold tracking-tight text-neutral-900">회원가입</h2>
+          <p className="mt-2 text-center text-sm text-neutral-600">
+            이미 계정이 있으신가요?{" "}
+            <Link href="/signin" className="font-medium text-amber-600 hover:text-amber-500">
+              로그인
+            </Link>
+          </p>
+        </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <TextInput
-              name="email"
-              label="이메일 주소"
-              type="email"
-              value={email}
-              onChange={setEmail}
-              required={true}
-            />
+        <div className="mt-8">
+          <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+            <form className="space-y-6" onSubmit={handleSubmit}>
+              <TextInput
+                name="email"
+                label="이메일 주소"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                required={true}
+              />
 
-            <TextInput
-              name="nickname"
-              label="닉네임"
-              type="text"
-              value={nickname}
-              onChange={setNickname}
-              required={true}
-            />
+              <TextInput
+                name="nickname"
+                label="닉네임"
+                type="text"
+                value={nickname}
+                onChange={setNickname}
+                required={true}
+              />
 
-            <PasswordInput
-              name="password"
-              label="비밀번호"
-              value={password}
-              onChange={setPassword}
-              required={true}
-            />
+              <PasswordInput name="password" label="비밀번호" value={password} onChange={setPassword} required={true} />
 
-            <PasswordInput
-              name="confirmPassword"
-              label="비밀번호 확인"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              required={true}
-            />
+              <PasswordInput
+                name="confirmPassword"
+                label="비밀번호 확인"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                required={true}
+              />
 
-            <div>
-              <ColorButton type="submit" color="black" fullWidth>
-                회원가입
-              </ColorButton>
-            </div>
-          </form>
+              <div>
+                <ColorButton type="submit" color="black" fullWidth>
+                  회원가입
+                </ColorButton>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>

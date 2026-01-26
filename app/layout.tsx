@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased pt-16`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <GNB />
         <Toaster
@@ -67,7 +67,7 @@ export default function RootLayout({
             },
           }}
         />
-        {children}
+        <main>{children}</main>
       </body>
     </html>
   );
