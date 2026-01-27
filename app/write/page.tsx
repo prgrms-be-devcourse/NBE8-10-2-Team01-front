@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import type { JSONContent } from "@tiptap/core";
 import { Extension, mergeAttributes } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -14,28 +13,47 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
-import { markdownToHtml, sliceToMarkdown } from "@/lib/markdown";
+import { useRouter } from "next/navigation";
+import { toast } from "react-hot-toast";
+import { post } from "@/lib/apiClient";
+import { isAuthed } from "@/lib/auth";
+import { docToMarkdown, markdownToHtml, sliceToMarkdown } from "@/lib/markdown";
 
 export default function WritePage() {
   const [title, setTitle] = React.useState("");
   const [tagInput, setTagInput] = React.useState("");
   const [tags, setTags] = React.useState<string[]>([]);
   const [isEmpty, setIsEmpty] = React.useState(true);
+  const [isSaving, setIsSaving] = React.useState(false);
   const [tableControls, setTableControls] = React.useState<{
     visible: boolean;
     top: number;
     left: number;
   }>({ visible: false, top: 0, left: 0 });
-  const [selectionVersion, setSelectionVersion] = React.useState(0);
+  const [previewHtml, setPreviewHtml] = React.useState("");
   const isComposingRef = React.useRef(false);
   const editorWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const previewRef = React.useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = React.useState(false);
+  const [authed, setAuthed] = React.useState(false);
+
+  React.useEffect(() => {
+    const loggedIn = isAuthed();
+    setAuthed(loggedIn);
+    setAuthChecked(true);
+    if (!loggedIn) {
+      toast.error("로그인이 필요합니다");
+      router.replace("/signin");
+    }
+  }, [router]);
 
   const handleCopy = React.useCallback(
     (view: EditorView, event: ClipboardEvent) => {
       const selection = view.state.selection;
       if (selection.empty) return false;
       const slice = selection.content();
-      const markdown = sliceToMarkdown(slice);
+      const markdown = sliceToMarkdown(slice, { paragraphSeparator: "\n" });
       if (!markdown) return false;
       event.preventDefault();
       event.clipboardData?.setData("text/plain", markdown);
@@ -310,20 +328,9 @@ export default function WritePage() {
     },
   });
 
-  const previewEditor = useEditor({
-    extensions,
-    content: "",
-    editable: false,
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        class: "tiptap-editor tiptap-preview",
-      },
-      handleDOMEvents: {
-        copy: (view, event) => handleCopy(view, event),
-      },
-    },
-  });
+  if (!authChecked || !authed) {
+    return null;
+  }
 
   const handleTagKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
@@ -338,11 +345,38 @@ export default function WritePage() {
     setTagInput("");
   };
 
+  const handleSave = React.useCallback(async () => {
+    if (!editor) return;
+    const trimmedTitle = title.trim();
+    const markdown = docToMarkdown(editor.state.doc);
+    const trimmedContent = markdown.trim();
+    if (!trimmedTitle || !trimmedContent) {
+      window.alert("제목과 본문을 모두 입력하세요.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await post(
+        "/api/posts",
+        {
+          title: trimmedTitle,
+          content: markdown,
+        },
+        { withAuth: true }
+      );
+      window.alert("저장되었습니다.");
+      router.push("/home");
+    } catch (error) {
+      window.alert("저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [editor, router, title]);
+
   React.useEffect(() => {
     if (!editor) return;
     const update = () => {
       if (editor.view.composing) return;
-      setSelectionVersion((v) => v + 1);
       const wrap = editorWrapRef.current;
       if (!wrap) return;
       const domAtPos = editor.view.domAtPos(editor.state.selection.from);
@@ -375,7 +409,6 @@ export default function WritePage() {
       root: HTMLElement,
       options: {
         withCopy: boolean;
-        editor?: typeof editor;
       }
     ) => {
       const blocks = root.querySelectorAll("pre");
@@ -427,21 +460,27 @@ export default function WritePage() {
   React.useEffect(() => {
     if (!editor) return;
     const sync = ({ editor: liveEditor }: { editor: typeof editor }) => {
-      const json = liveEditor.getJSON() as JSONContent;
-      previewEditor?.commands.setContent(json, { emitUpdate: false });
       setIsEmpty(liveEditor.isEmpty);
-      if (previewEditor?.view?.dom) {
-        applyCodeBlockDecorations(previewEditor.view.dom, {
-          withCopy: true,
-        });
-      }
+      const markdown = docToMarkdown(liveEditor.state.doc, {
+        paragraphSeparator: "\n",
+      });
+      const html = markdownToHtml(markdown, {
+        preserveEmptyLines: true,
+      });
+      setPreviewHtml(html);
     };
     sync({ editor });
     editor.on("update", sync);
     return () => {
       editor.off("update", sync);
     };
-  }, [editor, previewEditor, applyCodeBlockDecorations]);
+  }, [editor]);
+
+  React.useEffect(() => {
+    const root = previewRef.current;
+    if (!root) return;
+    applyCodeBlockDecorations(root, { withCopy: true });
+  }, [previewHtml, applyCodeBlockDecorations]);
 
   return (
     <div
@@ -633,7 +672,10 @@ export default function WritePage() {
             {isEmpty ? (
               <p className="text-neutral-300">오른쪽에 미리보기가 표시됩니다.</p>
             ) : (
-              <EditorContent editor={previewEditor} />
+              <div
+                ref={previewRef}
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
             )}
           </div>
         </div>
@@ -642,6 +684,8 @@ export default function WritePage() {
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-neutral-200 bg-white/90 px-6 py-4 backdrop-blur">
         <button
           type="button"
+          onClick={handleSave}
+          disabled={isSaving}
           className="rounded-full border border-neutral-900 bg-white px-6 py-3 text-sm font-semibold text-neutral-900 transition hover:-translate-y-0.5 hover:bg-neutral-900 hover:text-white"
         >
           임시저장
@@ -654,6 +698,8 @@ export default function WritePage() {
         </button>
         <button
           type="button"
+          onClick={handleSave}
+          disabled={isSaving}
           className="rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-neutral-900/20 transition hover:-translate-y-0.5 hover:bg-black"
         >
           저장

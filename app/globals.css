@@ -46,6 +46,11 @@ body {
   margin: 1rem 0 0.5rem;
 }
 
+.md-heading-prefix {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
 .md-p {
   color: #1f2937;
   line-height: 1.75rem;
@@ -75,6 +80,14 @@ body {
   border: 0;
   border-top: 1px solid #e5e7eb;
   margin: 2rem 0;
+}
+
+.md-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 0.8rem 0;
 }
 
 .md-editor {
@@ -270,16 +283,43 @@ body {
   margin: 1.2rem 0 0.8rem;
 }
 
+.tiptap-editor h1::before,
+.tiptap-editor .ProseMirror h1::before {
+  content: "# ";
+  display: inline-block;
+  margin-right: 0.15rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
 .tiptap-editor h2 {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 1rem 0 0.6rem;
 }
 
+.tiptap-editor h2::before,
+.tiptap-editor .ProseMirror h2::before {
+  content: "## ";
+  display: inline-block;
+  margin-right: 0.15rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
 .tiptap-editor h3 {
   font-size: 1.2rem;
   font-weight: 600;
   margin: 0.8rem 0 0.5rem;
+}
+
+.tiptap-editor h3::before,
+.tiptap-editor .ProseMirror h3::before {
+  content: "### ";
+  display: inline-block;
+  margin-right: 0.15rem;
+  color: #94a3b8;
+  font-weight: 600;
 }
 
 .tiptap-editor p {
