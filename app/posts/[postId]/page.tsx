@@ -178,7 +178,7 @@ export default function PostDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 px-6 py-10 text-neutral-900">
+      <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-20 text-neutral-900">
         <div className="mx-auto w-full max-w-4xl text-sm text-neutral-500">
           불러오는 중...
         </div>
@@ -188,7 +188,7 @@ export default function PostDetailPage() {
 
   if (!postData) {
     return (
-      <div className="min-h-screen bg-zinc-50 px-6 py-10 text-neutral-900">
+      <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-20 text-neutral-900">
         <div className="mx-auto w-full max-w-4xl text-sm text-rose-600">
           게시글을 찾을 수 없습니다.
         </div>
@@ -208,7 +208,7 @@ export default function PostDetailPage() {
   const myId: number | null = null;
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-6 py-10 text-neutral-900">
+    <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-20 text-neutral-900">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
         <section className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
           <div className="text-3xl font-bold text-neutral-900">

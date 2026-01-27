@@ -396,7 +396,7 @@ export default function WritePage() {
     const markdown = docToMarkdown(editor.state.doc);
     const trimmedContent = markdown.trim();
     if (!trimmedTitle || !trimmedContent) {
-      window.alert("제목과 본문을 모두 입력하세요.");
+      toast.error("제목과 본문을 모두 입력하세요.");
       return null;
     }
     return {

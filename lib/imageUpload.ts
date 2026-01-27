@@ -28,7 +28,8 @@ export async function uploadImageFile(file: File): Promise<string> {
 
   if (!response.ok) {
     const errorMessage = (data as any)?.message || "이미지 업로드에 실패했습니다.";
-    throw new Error(errorMessage);
+    console.error("Image upload failed", { status: response.status, data });
+    throw new Error(`[${response.status}] ${errorMessage}`);
   }
 
   const resolvedUrl =
@@ -45,4 +46,3 @@ export async function uploadImageFile(file: File): Promise<string> {
 
   return resolvedUrl;
 }
-

@@ -6,7 +6,12 @@ import { toast } from "react-hot-toast";
 import { post } from "@/lib/apiClient";
 import { renderMarkdown } from "@/lib/markdown";
 import { uploadImageFile } from "@/lib/imageUpload";
-import { buildDefaultThumbnails, extractImageUrls } from "@/lib/thumbnail";
+import {
+  buildDefaultThumbnails,
+  extractImageUrls,
+  renderDefaultThumbnail,
+  type DefaultThumbnailSpec,
+} from "@/lib/thumbnail";
 import { clearWriteDraft, loadWriteDraft, type WriteDraft } from "@/lib/writeDraft";
 
 type ThumbnailSource = "content" | "upload" | "default";
@@ -51,10 +56,66 @@ export default function WriteConfirmPage() {
     return extractImageUrls(draft.content);
   }, [draft]);
 
-  const defaultThumbnails = React.useMemo(() => {
+  const defaultThumbnails = React.useMemo<DefaultThumbnailSpec[]>(() => {
     if (!draft) return [];
     return buildDefaultThumbnails(draft.title);
   }, [draft]);
+
+  const defaultFilesRef = React.useRef<Record<string, File>>({});
+  const [defaultPreviewUrls, setDefaultPreviewUrls] = React.useState<
+    Record<string, string>
+  >({});
+
+  React.useEffect(() => {
+    if (defaultThumbnails.length === 0) {
+      defaultFilesRef.current = {};
+      setDefaultPreviewUrls({});
+      return;
+    }
+
+    let cancelled = false;
+    const createdUrls: string[] = [];
+
+    const run = async () => {
+      try {
+        const rendered = await Promise.all(
+          defaultThumbnails.map(async (spec) => {
+            const { file, previewUrl } = await renderDefaultThumbnail(spec);
+            return { id: spec.id, file, previewUrl };
+          })
+        );
+        if (cancelled) {
+          rendered.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+          return;
+        }
+        const nextFiles: Record<string, File> = {};
+        const nextUrls: Record<string, string> = {};
+        rendered.forEach((item) => {
+          nextFiles[item.id] = item.file;
+          nextUrls[item.id] = item.previewUrl;
+          createdUrls.push(item.previewUrl);
+        });
+        defaultFilesRef.current = nextFiles;
+        setDefaultPreviewUrls(nextUrls);
+      } catch (error) {
+        console.error(error);
+        toast.error("기본 썸네일 생성에 실패했습니다.");
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      createdUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [defaultThumbnails]);
+
+  const defaultSpecById = React.useMemo(() => {
+    const map = new Map<string, DefaultThumbnailSpec>();
+    defaultThumbnails.forEach((spec) => map.set(spec.id, spec));
+    return map;
+  }, [defaultThumbnails]);
 
   const options = React.useMemo<ThumbnailOption[]>(() => {
     const fromContent = contentImageUrls.map((url, index) => ({
@@ -69,14 +130,20 @@ export default function WriteConfirmPage() {
       label: `업로드 썸네일 ${index + 1}`,
       source: "upload" as const,
     }));
-    const fromDefaults = defaultThumbnails.map((item) => ({
-      id: item.id,
-      url: item.url,
-      label: item.label,
-      source: "default" as const,
-    }));
+    const fromDefaults = defaultThumbnails
+      .map((item) => {
+        const previewUrl = defaultPreviewUrls[item.id];
+        if (!previewUrl) return null;
+        return {
+          id: item.id,
+          url: previewUrl,
+          label: item.label,
+          source: "default" as const,
+        };
+      })
+      .filter((item): item is ThumbnailOption => item !== null);
     return [...fromContent, ...fromUploads, ...fromDefaults];
-  }, [contentImageUrls, defaultThumbnails, uploadedThumbs]);
+  }, [contentImageUrls, defaultPreviewUrls, defaultThumbnails, uploadedThumbs]);
 
   React.useEffect(() => {
     if (options.length === 0) return;
@@ -88,25 +155,37 @@ export default function WriteConfirmPage() {
   const selectedOption = options.find((item) => item.id === selectedId) ?? null;
 
   const reuploadThumbnailIfNeeded = React.useCallback(async (option: ThumbnailOption) => {
-    if (option.source === "upload") return option.url;
+    if (option.source === "upload" || option.source === "content") return option.url;
 
     try {
+      if (option.source === "default") {
+        const cachedFile = defaultFilesRef.current[option.id];
+        if (cachedFile) {
+          return await uploadImageFile(cachedFile);
+        }
+        const spec = defaultSpecById.get(option.id);
+        if (!spec) {
+          throw new Error("기본 썸네일 정보를 찾지 못했습니다.");
+        }
+        const { file } = await renderDefaultThumbnail(spec);
+        return await uploadImageFile(file);
+      }
+
+      const name = filenameFromUrl(option.url, "thumbnail.png");
       const response = await fetch(option.url);
       const blob = await response.blob();
-      const fallbackName =
-        option.source === "default" ? `${option.id}.png` : "thumbnail.png";
-      const name = filenameFromUrl(option.url, fallbackName);
       const file = new File([blob], name, {
         type: blob.type || "image/png",
       });
-      const uploadedUrl = await uploadImageFile(file);
-      return uploadedUrl;
+      return await uploadImageFile(file);
     } catch (error) {
       console.error(error);
-      toast.error("썸네일 재업로드에 실패해 원본 URL을 사용합니다.");
+      const message =
+        error instanceof Error ? error.message : "썸네일 업로드에 실패했습니다.";
+      toast.error(message);
       return option.url;
     }
-  }, []);
+  }, [defaultSpecById]);
 
   const handleUploadThumbnail = React.useCallback(
     async (files: FileList | null) => {
@@ -300,4 +379,3 @@ export default function WriteConfirmPage() {
     </div>
   );
 }
-
