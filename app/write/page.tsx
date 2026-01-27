@@ -16,7 +16,8 @@ import { TableCell } from "@tiptap/extension-table-cell";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { post } from "@/lib/apiClient";
-import { isAuthed } from "@/lib/auth";
+import { API_BASE_URL } from "@/lib/apiConfig";
+import { getToken, isAuthed } from "@/lib/auth";
 import { docToMarkdown, markdownToHtml, sliceToMarkdown } from "@/lib/markdown";
 
 export default function WritePage() {
@@ -34,6 +35,7 @@ export default function WritePage() {
   const isComposingRef = React.useRef(false);
   const editorWrapRef = React.useRef<HTMLDivElement | null>(null);
   const previewRef = React.useRef<HTMLDivElement | null>(null);
+  const imageInputRef = React.useRef<HTMLInputElement | null>(null);
   const router = useRouter();
   const [authChecked, setAuthChecked] = React.useState(false);
   const [authed, setAuthed] = React.useState(false);
@@ -60,6 +62,81 @@ export default function WritePage() {
       return true;
     },
     []
+  );
+
+  const uploadImage = React.useCallback(async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const token = getToken();
+    const headers: HeadersInit = token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {};
+
+    const url = new URL("/api/images", API_BASE_URL).toString();
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    const contentType = response.headers.get("content-type") ?? "";
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    if (!response.ok) {
+      const errorMessage = (data as any)?.message || "이미지 업로드에 실패했습니다.";
+      throw new Error(errorMessage);
+    }
+
+    const resolvedUrl =
+      (data as any)?.data?.successUrls?.[0] ??
+      (typeof (data as any)?.data === "string" ? (data as any).data : undefined) ??
+      (data as any)?.data?.url ??
+      (data as any)?.data?.imageUrl ??
+      (data as any)?.url ??
+      (data as any)?.imageUrl;
+
+    if (!resolvedUrl || typeof resolvedUrl !== "string") {
+      throw new Error("업로드 응답에서 이미지 URL을 찾지 못했습니다.");
+    }
+
+    return resolvedUrl;
+  }, []);
+
+  const insertImageMarkdown = React.useCallback(
+    (view: EditorView, imageUrl: string, alt: string) => {
+      const markdownImage = `![${alt}](${imageUrl})\n`;
+      const { from, to } = view.state.selection;
+      const tr = view.state.tr.insertText(markdownImage, from, to).scrollIntoView();
+      view.dispatch(tr);
+    },
+    []
+  );
+
+  const handleImageFiles = React.useCallback(
+    async (view: EditorView, files: File[]) => {
+      const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+      if (imageFiles.length === 0) return false;
+
+      try {
+        for (const file of imageFiles) {
+          const imageUrl = await uploadImage(file);
+          const alt = file.name.replace(/\.[^.]+$/, "") || "image";
+          insertImageMarkdown(view, imageUrl, alt);
+        }
+        toast.success("이미지를 업로드했습니다.");
+      } catch (error) {
+        console.error(error);
+        toast.error("이미지 업로드에 실패했습니다.");
+      }
+
+      return true;
+    },
+    [insertImageMarkdown, uploadImage]
   );
 
   const lowlight = React.useMemo(() => createLowlight(common), []);
@@ -297,6 +374,14 @@ export default function WritePage() {
         return true;
       },
       handlePaste: (view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []);
+        const hasImage = files.some((file) => file.type.startsWith("image/"));
+        if (hasImage) {
+          event.preventDefault();
+          void handleImageFiles(view, files);
+          return true;
+        }
+
         const text = event.clipboardData?.getData("text/plain") ?? "";
         const hasMarkdown =
           /(^|\n)#{1,6}\s/.test(text) ||
@@ -314,6 +399,14 @@ export default function WritePage() {
         view.dispatch(tr);
         return true;
       },
+      handleDrop: (view, event) => {
+        const files = Array.from(event.dataTransfer?.files ?? []);
+        const hasImage = files.some((file) => file.type.startsWith("image/"));
+        if (!hasImage) return false;
+        event.preventDefault();
+        void handleImageFiles(view, files);
+        return true;
+      },
       handleDOMEvents: {
         copy: (view, event) => handleCopy(view, event),
         compositionstart: () => {
@@ -327,10 +420,6 @@ export default function WritePage() {
       },
     },
   });
-
-  if (!authChecked || !authed) {
-    return null;
-  }
 
   const handleTagKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
@@ -482,9 +571,13 @@ export default function WritePage() {
     applyCodeBlockDecorations(root, { withCopy: true });
   }, [previewHtml, applyCodeBlockDecorations]);
 
+  if (!authChecked || !authed) {
+    return null;
+  }
+
   return (
     <div
-      className="flex h-screen flex-col overflow-hidden bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 text-neutral-900"
+      className="flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 pt-16 text-neutral-900"
       style={{
         fontFamily:
           '"Manrope", "Space Grotesk", "Noto Sans KR", "Pretendard", sans-serif',
@@ -529,6 +622,19 @@ export default function WritePage() {
 
           <div className="flex-1 min-h-0">
             <div className="flex flex-wrap items-center gap-2 pb-3">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  const nextFiles = Array.from(event.target.files ?? []);
+                  if (!editor || nextFiles.length === 0) return;
+                  void handleImageFiles(editor.view, nextFiles);
+                  event.currentTarget.value = "";
+                }}
+              />
               <button
                 type="button"
                 onClick={() => editor?.chain().focus().toggleBold().run()}
@@ -577,6 +683,13 @@ export default function WritePage() {
                 className={`toolbar-pill ${editor?.isActive("codeBlock") ? "is-active" : ""}`}
               >
                 Code
+              </button>
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="toolbar-pill"
+              >
+                Image
               </button>
               <button
                 type="button"
@@ -692,6 +805,7 @@ export default function WritePage() {
         </button>
         <button
           type="button"
+          onClick={() => router.push("/home")}
           className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-600 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:text-neutral-900"
         >
           나가기
