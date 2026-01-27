@@ -15,17 +15,16 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
-import { post } from "@/lib/apiClient";
-import { API_BASE_URL } from "@/lib/apiConfig";
-import { getToken, isAuthed } from "@/lib/auth";
+import { isAuthed } from "@/lib/auth";
+import { uploadImageFile } from "@/lib/imageUpload";
 import { docToMarkdown, markdownToHtml, sliceToMarkdown } from "@/lib/markdown";
+import { saveWriteDraft } from "@/lib/writeDraft";
 
 export default function WritePage() {
   const [title, setTitle] = React.useState("");
   const [tagInput, setTagInput] = React.useState("");
   const [tags, setTags] = React.useState<string[]>([]);
   const [isEmpty, setIsEmpty] = React.useState(true);
-  const [isSaving, setIsSaving] = React.useState(false);
   const [tableControls, setTableControls] = React.useState<{
     visible: boolean;
     top: number;
@@ -64,49 +63,6 @@ export default function WritePage() {
     []
   );
 
-  const uploadImage = React.useCallback(async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const token = getToken();
-    const headers: HeadersInit = token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : {};
-
-    const url = new URL("/api/images", API_BASE_URL).toString();
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
-
-    const contentType = response.headers.get("content-type") ?? "";
-    const data = contentType.includes("application/json")
-      ? await response.json()
-      : await response.text();
-
-    if (!response.ok) {
-      const errorMessage = (data as any)?.message || "이미지 업로드에 실패했습니다.";
-      throw new Error(errorMessage);
-    }
-
-    const resolvedUrl =
-      (data as any)?.data?.successUrls?.[0] ??
-      (typeof (data as any)?.data === "string" ? (data as any).data : undefined) ??
-      (data as any)?.data?.url ??
-      (data as any)?.data?.imageUrl ??
-      (data as any)?.url ??
-      (data as any)?.imageUrl;
-
-    if (!resolvedUrl || typeof resolvedUrl !== "string") {
-      throw new Error("업로드 응답에서 이미지 URL을 찾지 못했습니다.");
-    }
-
-    return resolvedUrl;
-  }, []);
-
   const insertImageMarkdown = React.useCallback(
     (view: EditorView, imageUrl: string, alt: string) => {
       const markdownImage = `![${alt}](${imageUrl})\n`;
@@ -124,7 +80,7 @@ export default function WritePage() {
 
       try {
         for (const file of imageFiles) {
-          const imageUrl = await uploadImage(file);
+          const imageUrl = await uploadImageFile(file);
           const alt = file.name.replace(/\.[^.]+$/, "") || "image";
           insertImageMarkdown(view, imageUrl, alt);
         }
@@ -136,7 +92,7 @@ export default function WritePage() {
 
       return true;
     },
-    [insertImageMarkdown, uploadImage]
+    [insertImageMarkdown]
   );
 
   const lowlight = React.useMemo(() => createLowlight(common), []);
@@ -434,33 +390,35 @@ export default function WritePage() {
     setTagInput("");
   };
 
-  const handleSave = React.useCallback(async () => {
-    if (!editor) return;
+  const buildDraft = React.useCallback(() => {
+    if (!editor) return null;
     const trimmedTitle = title.trim();
     const markdown = docToMarkdown(editor.state.doc);
     const trimmedContent = markdown.trim();
     if (!trimmedTitle || !trimmedContent) {
       window.alert("제목과 본문을 모두 입력하세요.");
-      return;
+      return null;
     }
-    setIsSaving(true);
-    try {
-      await post(
-        "/api/posts",
-        {
-          title: trimmedTitle,
-          content: markdown,
-        },
-        { withAuth: true }
-      );
-      window.alert("저장되었습니다.");
-      router.push("/home");
-    } catch (error) {
-      window.alert("저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editor, router, title]);
+    return {
+      title: trimmedTitle,
+      content: markdown,
+      tags,
+    };
+  }, [editor, tags, title]);
+
+  const handleTempSave = React.useCallback(() => {
+    const draft = buildDraft();
+    if (!draft) return;
+    saveWriteDraft(draft);
+    toast.success("임시저장되었습니다.");
+  }, [buildDraft]);
+
+  const handleProceed = React.useCallback(() => {
+    const draft = buildDraft();
+    if (!draft) return;
+    saveWriteDraft(draft);
+    router.push("/write/confirm");
+  }, [buildDraft, router]);
 
   React.useEffect(() => {
     if (!editor) return;
@@ -797,8 +755,7 @@ export default function WritePage() {
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-neutral-200 bg-white/90 px-6 py-4 backdrop-blur">
         <button
           type="button"
-          onClick={handleSave}
-          disabled={isSaving}
+          onClick={handleTempSave}
           className="rounded-full border border-neutral-900 bg-white px-6 py-3 text-sm font-semibold text-neutral-900 transition hover:-translate-y-0.5 hover:bg-neutral-900 hover:text-white"
         >
           임시저장
@@ -812,8 +769,7 @@ export default function WritePage() {
         </button>
         <button
           type="button"
-          onClick={handleSave}
-          disabled={isSaving}
+          onClick={handleProceed}
           className="rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-neutral-900/20 transition hover:-translate-y-0.5 hover:bg-black"
         >
           저장
