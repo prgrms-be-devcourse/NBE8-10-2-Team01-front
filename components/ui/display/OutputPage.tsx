@@ -28,10 +28,25 @@ type OutputPageProps = {
 
 function renderInline(text: string) {
   const tokenRegex =
-    /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
+    /(!\[[^\]]*\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
   const parts = text.split(tokenRegex).filter(Boolean);
 
   return parts.map((part, index) => {
+    if (part.startsWith("![")) {
+      const match = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (match) {
+        const [, alt, src] = match;
+        return (
+          <img
+            key={index}
+            src={src}
+            alt={alt}
+            className="md-image"
+            loading="lazy"
+          />
+        );
+      }
+    }
     if (part.startsWith("**") && part.endsWith("**")) {
       return <strong key={index}>{part.slice(2, -2)}</strong>;
     }

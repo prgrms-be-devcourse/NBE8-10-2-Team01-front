@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import type { JSONContent } from "@tiptap/core";
 import { Extension, mergeAttributes } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -14,7 +13,12 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
-import { markdownToHtml, sliceToMarkdown } from "@/lib/markdown";
+import { useRouter } from "next/navigation";
+import { toast } from "react-hot-toast";
+import { isAuthed } from "@/lib/auth";
+import { uploadImageFile } from "@/lib/imageUpload";
+import { docToMarkdown, markdownToHtml, sliceToMarkdown } from "@/lib/markdown";
+import { saveWriteDraft } from "@/lib/writeDraft";
 
 export default function WritePage() {
   const [title, setTitle] = React.useState("");
@@ -26,22 +30,69 @@ export default function WritePage() {
     top: number;
     left: number;
   }>({ visible: false, top: 0, left: 0 });
-  const [selectionVersion, setSelectionVersion] = React.useState(0);
+  const [previewHtml, setPreviewHtml] = React.useState("");
   const isComposingRef = React.useRef(false);
   const editorWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const previewRef = React.useRef<HTMLDivElement | null>(null);
+  const imageInputRef = React.useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = React.useState(false);
+  const [authed, setAuthed] = React.useState(false);
+
+  React.useEffect(() => {
+    const loggedIn = isAuthed();
+    setAuthed(loggedIn);
+    setAuthChecked(true);
+    if (!loggedIn) {
+      toast.error("로그인이 필요합니다");
+      router.replace("/signin");
+    }
+  }, [router]);
 
   const handleCopy = React.useCallback(
     (view: EditorView, event: ClipboardEvent) => {
       const selection = view.state.selection;
       if (selection.empty) return false;
       const slice = selection.content();
-      const markdown = sliceToMarkdown(slice);
+      const markdown = sliceToMarkdown(slice, { paragraphSeparator: "\n" });
       if (!markdown) return false;
       event.preventDefault();
       event.clipboardData?.setData("text/plain", markdown);
       return true;
     },
     []
+  );
+
+  const insertImageMarkdown = React.useCallback(
+    (view: EditorView, imageUrl: string, alt: string) => {
+      const markdownImage = `![${alt}](${imageUrl})\n`;
+      const { from, to } = view.state.selection;
+      const tr = view.state.tr.insertText(markdownImage, from, to).scrollIntoView();
+      view.dispatch(tr);
+    },
+    []
+  );
+
+  const handleImageFiles = React.useCallback(
+    async (view: EditorView, files: File[]) => {
+      const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+      if (imageFiles.length === 0) return false;
+
+      try {
+        for (const file of imageFiles) {
+          const imageUrl = await uploadImageFile(file);
+          const alt = file.name.replace(/\.[^.]+$/, "") || "image";
+          insertImageMarkdown(view, imageUrl, alt);
+        }
+        toast.success("이미지를 업로드했습니다.");
+      } catch (error) {
+        console.error(error);
+        toast.error("이미지 업로드에 실패했습니다.");
+      }
+
+      return true;
+    },
+    [insertImageMarkdown]
   );
 
   const lowlight = React.useMemo(() => createLowlight(common), []);
@@ -279,6 +330,14 @@ export default function WritePage() {
         return true;
       },
       handlePaste: (view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []);
+        const hasImage = files.some((file) => file.type.startsWith("image/"));
+        if (hasImage) {
+          event.preventDefault();
+          void handleImageFiles(view, files);
+          return true;
+        }
+
         const text = event.clipboardData?.getData("text/plain") ?? "";
         const hasMarkdown =
           /(^|\n)#{1,6}\s/.test(text) ||
@@ -296,6 +355,14 @@ export default function WritePage() {
         view.dispatch(tr);
         return true;
       },
+      handleDrop: (view, event) => {
+        const files = Array.from(event.dataTransfer?.files ?? []);
+        const hasImage = files.some((file) => file.type.startsWith("image/"));
+        if (!hasImage) return false;
+        event.preventDefault();
+        void handleImageFiles(view, files);
+        return true;
+      },
       handleDOMEvents: {
         copy: (view, event) => handleCopy(view, event),
         compositionstart: () => {
@@ -306,21 +373,6 @@ export default function WritePage() {
           isComposingRef.current = false;
           return false;
         },
-      },
-    },
-  });
-
-  const previewEditor = useEditor({
-    extensions,
-    content: "",
-    editable: false,
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        class: "tiptap-editor tiptap-preview",
-      },
-      handleDOMEvents: {
-        copy: (view, event) => handleCopy(view, event),
       },
     },
   });
@@ -338,11 +390,40 @@ export default function WritePage() {
     setTagInput("");
   };
 
+  const buildDraft = React.useCallback(() => {
+    if (!editor) return null;
+    const trimmedTitle = title.trim();
+    const markdown = docToMarkdown(editor.state.doc);
+    const trimmedContent = markdown.trim();
+    if (!trimmedTitle || !trimmedContent) {
+      toast.error("제목과 본문을 모두 입력하세요.");
+      return null;
+    }
+    return {
+      title: trimmedTitle,
+      content: markdown,
+      tags,
+    };
+  }, [editor, tags, title]);
+
+  const handleTempSave = React.useCallback(() => {
+    const draft = buildDraft();
+    if (!draft) return;
+    saveWriteDraft(draft);
+    toast.success("임시저장되었습니다.");
+  }, [buildDraft]);
+
+  const handleProceed = React.useCallback(() => {
+    const draft = buildDraft();
+    if (!draft) return;
+    saveWriteDraft(draft);
+    router.push("/write/confirm");
+  }, [buildDraft, router]);
+
   React.useEffect(() => {
     if (!editor) return;
     const update = () => {
       if (editor.view.composing) return;
-      setSelectionVersion((v) => v + 1);
       const wrap = editorWrapRef.current;
       if (!wrap) return;
       const domAtPos = editor.view.domAtPos(editor.state.selection.from);
@@ -375,7 +456,6 @@ export default function WritePage() {
       root: HTMLElement,
       options: {
         withCopy: boolean;
-        editor?: typeof editor;
       }
     ) => {
       const blocks = root.querySelectorAll("pre");
@@ -427,25 +507,35 @@ export default function WritePage() {
   React.useEffect(() => {
     if (!editor) return;
     const sync = ({ editor: liveEditor }: { editor: typeof editor }) => {
-      const json = liveEditor.getJSON() as JSONContent;
-      previewEditor?.commands.setContent(json, { emitUpdate: false });
       setIsEmpty(liveEditor.isEmpty);
-      if (previewEditor?.view?.dom) {
-        applyCodeBlockDecorations(previewEditor.view.dom, {
-          withCopy: true,
-        });
-      }
+      const markdown = docToMarkdown(liveEditor.state.doc, {
+        paragraphSeparator: "\n",
+      });
+      const html = markdownToHtml(markdown, {
+        preserveEmptyLines: true,
+      });
+      setPreviewHtml(html);
     };
     sync({ editor });
     editor.on("update", sync);
     return () => {
       editor.off("update", sync);
     };
-  }, [editor, previewEditor, applyCodeBlockDecorations]);
+  }, [editor]);
+
+  React.useEffect(() => {
+    const root = previewRef.current;
+    if (!root) return;
+    applyCodeBlockDecorations(root, { withCopy: true });
+  }, [previewHtml, applyCodeBlockDecorations]);
+
+  if (!authChecked || !authed) {
+    return null;
+  }
 
   return (
     <div
-      className="flex h-screen flex-col overflow-hidden bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 text-neutral-900"
+      className="flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 pt-16 text-neutral-900"
       style={{
         fontFamily:
           '"Manrope", "Space Grotesk", "Noto Sans KR", "Pretendard", sans-serif',
@@ -490,6 +580,19 @@ export default function WritePage() {
 
           <div className="flex-1 min-h-0">
             <div className="flex flex-wrap items-center gap-2 pb-3">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  const nextFiles = Array.from(event.target.files ?? []);
+                  if (!editor || nextFiles.length === 0) return;
+                  void handleImageFiles(editor.view, nextFiles);
+                  event.currentTarget.value = "";
+                }}
+              />
               <button
                 type="button"
                 onClick={() => editor?.chain().focus().toggleBold().run()}
@@ -538,6 +641,13 @@ export default function WritePage() {
                 className={`toolbar-pill ${editor?.isActive("codeBlock") ? "is-active" : ""}`}
               >
                 Code
+              </button>
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="toolbar-pill"
+              >
+                Image
               </button>
               <button
                 type="button"
@@ -633,7 +743,10 @@ export default function WritePage() {
             {isEmpty ? (
               <p className="text-neutral-300">오른쪽에 미리보기가 표시됩니다.</p>
             ) : (
-              <EditorContent editor={previewEditor} />
+              <div
+                ref={previewRef}
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
             )}
           </div>
         </div>
@@ -642,18 +755,21 @@ export default function WritePage() {
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-neutral-200 bg-white/90 px-6 py-4 backdrop-blur">
         <button
           type="button"
+          onClick={handleTempSave}
           className="rounded-full border border-neutral-900 bg-white px-6 py-3 text-sm font-semibold text-neutral-900 transition hover:-translate-y-0.5 hover:bg-neutral-900 hover:text-white"
         >
           임시저장
         </button>
         <button
           type="button"
+          onClick={() => router.push("/home")}
           className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-600 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:text-neutral-900"
         >
           나가기
         </button>
         <button
           type="button"
+          onClick={handleProceed}
           className="rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-neutral-900/20 transition hover:-translate-y-0.5 hover:bg-black"
         >
           저장

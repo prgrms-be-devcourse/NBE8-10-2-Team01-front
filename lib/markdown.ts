@@ -3,6 +3,7 @@ import type { Fragment, Node as ProseMirrorNode, Slice } from "prosemirror-model
 type MarkdownOptions = {
   highlight?: boolean;
   preserveEmptyLines?: boolean;
+  includeHeadingPrefix?: boolean;
 };
 
 // Note: code-block UI actions (language selector/copy) live in `app/write/page.tsx` with TipTap.
@@ -22,9 +23,12 @@ function escapeHtml(value: string) {
 function formatInline(value: string) {
   let text = escapeHtml(value);
 
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, src) => {
+    return `<img src="${src}" alt="${alt}" class="md-image" loading="lazy" />`;
+  });
+
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, href) => {
-    const safeHref = escapeHtml(href);
-    return `<a href="${safeHref}" class="md-link">${label}</a>`;
+    return `<a href="${href}" class="md-link">${label}</a>`;
   });
 
   text = text.replace(/`([^`]+)`/g, (_m, code) => {
@@ -54,6 +58,7 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
   const blocks: string[] = [];
   let i = 0;
   const preserveEmptyLines = options.preserveEmptyLines ?? true;
+  const includeHeadingPrefix = options.includeHeadingPrefix ?? false;
 
   while (i < lines.length) {
     const raw = lines[i];
@@ -152,19 +157,34 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
     }
 
     if (line.startsWith("### ")) {
-      blocks.push(`<h3 class="md-h3">${formatInline(line.slice(4))}</h3>`);
+      const prefix = includeHeadingPrefix
+        ? '<span class="md-heading-prefix">### </span>'
+        : "";
+      blocks.push(
+        `<h3 class="md-h3">${prefix}${formatInline(line.slice(4))}</h3>`
+      );
       i += 1;
       continue;
     }
 
     if (line.startsWith("## ")) {
-      blocks.push(`<h2 class="md-h2">${formatInline(line.slice(3))}</h2>`);
+      const prefix = includeHeadingPrefix
+        ? '<span class="md-heading-prefix">## </span>'
+        : "";
+      blocks.push(
+        `<h2 class="md-h2">${prefix}${formatInline(line.slice(3))}</h2>`
+      );
       i += 1;
       continue;
     }
 
     if (line.startsWith("# ")) {
-      blocks.push(`<h1 class="md-h1">${formatInline(line.slice(2))}</h1>`);
+      const prefix = includeHeadingPrefix
+        ? '<span class="md-heading-prefix"># </span>'
+        : "";
+      blocks.push(
+        `<h1 class="md-h1">${prefix}${formatInline(line.slice(2))}</h1>`
+      );
       i += 1;
       continue;
     }
@@ -243,7 +263,7 @@ function serializeBlock(node: ProseMirrorNode, orderedIndex = 1): string | null 
       return `${"#".repeat(level)} ${text}`;
     }
     case "blockquote": {
-      const inner = serializeFragment(node.content)
+      const inner = serializeFragment(node.content, "\n")
         .split("\n")
         .map((line) => `> ${line}`)
         .join("\n");
@@ -313,7 +333,7 @@ function serializeBlock(node: ProseMirrorNode, orderedIndex = 1): string | null 
   }
 }
 
-function serializeFragment(fragment: Fragment): string {
+function serializeFragment(fragment: Fragment, separator: string): string {
   const blocks: string[] = [];
   fragment.forEach((node) => {
     const block = serializeBlock(node);
@@ -321,11 +341,23 @@ function serializeFragment(fragment: Fragment): string {
       blocks.push(block);
     }
   });
-  return blocks.join("\n\n");
+  return blocks.join(separator);
 }
 
-export function sliceToMarkdown(slice: Slice): string {
-  return serializeFragment(slice.content).trim();
+export function sliceToMarkdown(
+  slice: Slice,
+  options: { paragraphSeparator?: string } = {}
+): string {
+  const separator = options.paragraphSeparator ?? "\n\n";
+  return serializeFragment(slice.content, separator).trim();
+}
+
+export function docToMarkdown(
+  doc: ProseMirrorNode,
+  options: { paragraphSeparator?: string } = {}
+): string {
+  const separator = options.paragraphSeparator ?? "\n\n";
+  return serializeFragment(doc.content, separator).trim();
 }
 
 type EditorLine = {
