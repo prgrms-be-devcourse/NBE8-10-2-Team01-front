@@ -114,6 +114,7 @@ export async function request<T = unknown>(
   const init: RequestInit = {
     method: options.method ?? (options.body ? "POST" : "GET"),
     headers,
+    credentials: "include",
   };
 
   if (options.body !== undefined) {
