@@ -12,6 +12,12 @@ type OutputBlockProps = {
   /** 상단 이미지 URL (없으면 이미지 섹션 숨김) */
   imageUrl?: string;
 
+  /** 작성자 이름 */
+  authorName?: string;
+
+  /** 작성자 프로필 이미지 */
+  authorImageUrl?: string | null;
+
   className?: string;
 };
 
@@ -20,8 +26,15 @@ export function OutputBlock({
   summary,
   meta,
   imageUrl,
+  authorName,
+  authorImageUrl,
   className,
 }: OutputBlockProps) {
+  const fallbackAvatar =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e2e8f0"/><stop offset="100%" stop-color="#cbd5f5"/></linearGradient></defs><rect width="96" height="96" rx="48" fill="url(#g)"/><circle cx="48" cy="38" r="16" fill="#ffffff"/><path d="M20 80c4-16 20-24 28-24s24 8 28 24" fill="#ffffff"/></svg>'
+    );
   const fallbackImage =
     "data:image/svg+xml;utf8," +
     encodeURIComponent(
@@ -52,8 +65,18 @@ export function OutputBlock({
           {summary}
         </div>
         <div className="mt-4 flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-neutral-200" />
-          <div className="h-3 w-24 rounded-full bg-neutral-200" />
+          <img
+            src={authorImageUrl ?? fallbackAvatar}
+            alt=""
+            className="h-8 w-8 rounded-full object-cover"
+          />
+          {authorName ? (
+            <div className="text-xs font-semibold text-neutral-700">
+              {authorName}
+            </div>
+          ) : (
+            <div className="h-3 w-24 rounded-full bg-neutral-200" />
+          )}
         </div>
       </div>
     </div>

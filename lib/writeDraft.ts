@@ -6,6 +6,8 @@ export type WriteDraft = {
   title: string;
   content: string;
   tags: string[];
+  postId?: number;
+  thumbnail?: string | null;
 };
 
 export function saveWriteDraft(draft: WriteDraft) {
@@ -29,4 +31,3 @@ export function clearWriteDraft() {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(WRITE_DRAFT_KEY);
 }
-

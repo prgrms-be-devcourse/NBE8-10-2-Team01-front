@@ -13,7 +13,7 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { del, get, post, put } from "@/lib/apiClient";
 import { isAuthed } from "@/lib/auth";
@@ -31,6 +31,13 @@ type PostTemplateInfoDto = {
   name: string;
   title: string;
   content: string;
+};
+
+type PostEditRes = {
+  id: number;
+  title: string;
+  content: string;
+  thumbnail?: string | null;
 };
 
 type TemplateFormState = {
@@ -55,9 +62,15 @@ export default function WritePage() {
   const editorWrapRef = React.useRef<HTMLDivElement | null>(null);
   const previewRef = React.useRef<HTMLDivElement | null>(null);
   const imageInputRef = React.useRef<HTMLInputElement | null>(null);
+  const editLoadedRef = React.useRef<number | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editPostIdParam = searchParams.get("postId");
+  const editPostId = editPostIdParam ? Number(editPostIdParam) : null;
+  const isEditMode = Boolean(editPostId);
   const [authChecked, setAuthChecked] = React.useState(false);
   const [authed, setAuthed] = React.useState(false);
+  const [editThumbnail, setEditThumbnail] = React.useState<string>("");
   const [templateOpen, setTemplateOpen] = React.useState(false);
   const [templateMode, setTemplateMode] = React.useState<"list" | "create" | "edit">(
     "list"
@@ -466,7 +479,7 @@ export default function WritePage() {
         preserveEmptyLines: true,
         highlight: false,
       });
-      editor.commands.setContent(html, false);
+      editor.commands.setContent(html);
       editor.commands.focus("end");
     },
     [editor]
@@ -512,7 +525,7 @@ export default function WritePage() {
       preserveEmptyLines: true,
       highlight: false,
     });
-    templateEditor.commands.setContent(html, false);
+    templateEditor.commands.setContent(html);
   }, [templateEditor, templateForm.content, templateMode, templateOpen]);
 
   const handleDeleteTemplate = React.useCallback(
@@ -593,6 +606,33 @@ export default function WritePage() {
     setTagInput("");
   };
 
+  React.useEffect(() => {
+    if (!isEditMode || !editPostId || !editor) return;
+    if (editLoadedRef.current === editPostId) return;
+    editLoadedRef.current = editPostId;
+    const run = async () => {
+      try {
+        const response = await get<PostEditRes>(`/api/posts/${editPostId}`, {
+          withAuth: true,
+        });
+        const data = response.data;
+        setTitle(data.title ?? "");
+        setEditThumbnail(data.thumbnail ?? "");
+        const html = markdownToHtml(data.content ?? "", {
+          preserveEmptyLines: true,
+          highlight: false,
+        });
+        editor.commands.setContent(html);
+        editor.commands.focus("end");
+      } catch (error) {
+        console.error(error);
+        toast.error("게시글 정보를 불러오지 못했습니다.");
+        router.push("/home");
+      }
+    };
+    void run();
+  }, [editor, editPostId, isEditMode, router]);
+
   const buildDraft = React.useCallback(() => {
     if (!editor) return null;
     const trimmedTitle = title.trim();
@@ -606,8 +646,10 @@ export default function WritePage() {
       title: trimmedTitle,
       content: markdown,
       tags,
+      postId: isEditMode && editPostId ? editPostId : undefined,
+      thumbnail: isEditMode ? (editThumbnail ? editThumbnail : null) : undefined,
     };
-  }, [editor, tags, title]);
+  }, [editPostId, editThumbnail, editor, isEditMode, tags, title]);
 
   const handleTempSave = React.useCallback(() => {
     const draft = buildDraft();
@@ -620,8 +662,12 @@ export default function WritePage() {
     const draft = buildDraft();
     if (!draft) return;
     saveWriteDraft(draft);
-    router.push("/write/confirm");
-  }, [buildDraft, router]);
+    if (isEditMode && editPostId) {
+      router.push(`/write/confirm?mode=edit&postId=${editPostId}`);
+    } else {
+      router.push("/write/confirm");
+    }
+  }, [buildDraft, editPostId, isEditMode, router]);
 
   React.useEffect(() => {
     if (!editor) return;
@@ -958,23 +1004,29 @@ export default function WritePage() {
       </section>
 
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-neutral-200 bg-white/90 px-6 py-4 backdrop-blur">
+        {!isEditMode && (
+          <button
+            type="button"
+            onClick={openTemplateModal}
+            className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-600 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:text-neutral-900"
+          >
+            불러오기
+          </button>
+        )}
+        {!isEditMode && (
+          <button
+            type="button"
+            onClick={handleTempSave}
+            className="rounded-full border border-neutral-900 bg-white px-6 py-3 text-sm font-semibold text-neutral-900 transition hover:-translate-y-0.5 hover:bg-neutral-900 hover:text-white"
+          >
+            임시저장
+          </button>
+        )}
         <button
           type="button"
-          onClick={openTemplateModal}
-          className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-600 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:text-neutral-900"
-        >
-          불러오기
-        </button>
-        <button
-          type="button"
-          onClick={handleTempSave}
-          className="rounded-full border border-neutral-900 bg-white px-6 py-3 text-sm font-semibold text-neutral-900 transition hover:-translate-y-0.5 hover:bg-neutral-900 hover:text-white"
-        >
-          임시저장
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/home")}
+          onClick={() =>
+            isEditMode && editPostId ? router.push(`/posts/${editPostId}`) : router.push("/home")
+          }
           className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-600 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:text-neutral-900"
         >
           나가기
@@ -984,11 +1036,11 @@ export default function WritePage() {
           onClick={handleProceed}
           className="rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-neutral-900/20 transition hover:-translate-y-0.5 hover:bg-black"
         >
-          저장
+          {isEditMode ? "수정하기" : "저장"}
         </button>
       </footer>
 
-      {templateOpen && (
+      {templateOpen && !isEditMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
           <div
             className={`w-full rounded-2xl bg-white p-6 shadow-2xl ${

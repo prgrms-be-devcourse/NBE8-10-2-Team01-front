@@ -14,6 +14,9 @@ type PostInfoRes = {
   viewCount: number;
   createDate: string | null;
   modifyDate: string | null;
+  thumbnail?: string | null;
+  nickname?: string | null;
+  profileImage?: string | null;
 };
 
 export default function HomePage() {
@@ -78,6 +81,9 @@ export default function HomePage() {
                     title={post.title}
                     summary={post.summary}
                     meta={meta}
+                    imageUrl={post.thumbnail ?? undefined}
+                    authorName={post.nickname ?? undefined}
+                    authorImageUrl={post.profileImage ?? undefined}
                   />
                 </Link>
               );
