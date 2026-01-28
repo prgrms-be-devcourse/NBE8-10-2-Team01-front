@@ -15,10 +15,30 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
+import { del, get, post, put } from "@/lib/apiClient";
 import { isAuthed } from "@/lib/auth";
 import { uploadImageFile } from "@/lib/imageUpload";
 import { docToMarkdown, markdownToHtml, sliceToMarkdown } from "@/lib/markdown";
 import { saveWriteDraft } from "@/lib/writeDraft";
+
+type PostTemplateSummaryRes = {
+  id: number;
+  name: string;
+};
+
+type PostTemplateInfoDto = {
+  id: number;
+  name: string;
+  title: string;
+  content: string;
+};
+
+type TemplateFormState = {
+  id?: number;
+  name: string;
+  title: string;
+  content: string;
+};
 
 export default function WritePage() {
   const [title, setTitle] = React.useState("");
@@ -38,6 +58,20 @@ export default function WritePage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = React.useState(false);
   const [authed, setAuthed] = React.useState(false);
+  const [templateOpen, setTemplateOpen] = React.useState(false);
+  const [templateMode, setTemplateMode] = React.useState<"list" | "create" | "edit">(
+    "list"
+  );
+  const [templateList, setTemplateList] = React.useState<PostTemplateSummaryRes[]>(
+    []
+  );
+  const [templateLoading, setTemplateLoading] = React.useState(false);
+  const [templateSaving, setTemplateSaving] = React.useState(false);
+  const [templateForm, setTemplateForm] = React.useState<TemplateFormState>({
+    name: "",
+    title: "",
+    content: "",
+  });
 
   React.useEffect(() => {
     const loggedIn = isAuthed();
@@ -377,6 +411,175 @@ export default function WritePage() {
     },
   });
 
+  const templateEditor = useEditor({
+    extensions,
+    content: "",
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class: "tiptap-editor",
+      },
+    },
+  });
+
+  const templateEditorEmpty = templateEditor?.isEmpty ?? true;
+
+  const resetTemplateForm = React.useCallback(() => {
+    setTemplateForm({ name: "", title: "", content: "" });
+  }, []);
+
+  const loadTemplateList = React.useCallback(async () => {
+    setTemplateLoading(true);
+    try {
+      const response = await get<PostTemplateSummaryRes[]>(
+        "/api/posts/templates",
+        { withAuth: true }
+      );
+      setTemplateList(response.data ?? []);
+    } catch (error) {
+      console.error(error);
+      toast.error("템플릿 목록을 불러오지 못했습니다.");
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, []);
+
+  const openTemplateModal = React.useCallback(() => {
+    setTemplateOpen(true);
+    setTemplateMode("list");
+    void loadTemplateList();
+  }, [loadTemplateList]);
+
+  const fetchTemplateDetail = React.useCallback(async (id: number) => {
+    const response = await get<PostTemplateInfoDto>(
+      `/api/posts/templates/${id}`,
+      { withAuth: true }
+    );
+    return response.data;
+  }, []);
+
+  const applyTemplateToEditor = React.useCallback(
+    (template: PostTemplateInfoDto) => {
+      setTitle(template.title ?? "");
+      if (!editor) return;
+      const html = markdownToHtml(template.content ?? "", {
+        preserveEmptyLines: true,
+        highlight: false,
+      });
+      editor.commands.setContent(html, false);
+      editor.commands.focus("end");
+    },
+    [editor]
+  );
+
+  const handleSelectTemplate = React.useCallback(
+    async (id: number) => {
+      try {
+        const template = await fetchTemplateDetail(id);
+        applyTemplateToEditor(template);
+        toast.success("템플릿을 불러왔습니다.");
+        setTemplateOpen(false);
+      } catch (error) {
+        console.error(error);
+        toast.error("템플릿을 불러오지 못했습니다.");
+      }
+    },
+    [applyTemplateToEditor, fetchTemplateDetail]
+  );
+
+  const handleEditTemplate = React.useCallback(
+    async (id: number) => {
+      try {
+        const template = await fetchTemplateDetail(id);
+        setTemplateForm({
+          id: template.id,
+          name: template.name ?? "",
+          title: template.title ?? "",
+          content: template.content ?? "",
+        });
+        setTemplateMode("edit");
+      } catch (error) {
+        console.error(error);
+        toast.error("템플릿 정보를 불러오지 못했습니다.");
+      }
+    },
+    [fetchTemplateDetail]
+  );
+
+  React.useEffect(() => {
+    if (!templateEditor || !templateOpen || templateMode === "list") return;
+    const html = markdownToHtml(templateForm.content ?? "", {
+      preserveEmptyLines: true,
+      highlight: false,
+    });
+    templateEditor.commands.setContent(html, false);
+  }, [templateEditor, templateForm.content, templateMode, templateOpen]);
+
+  const handleDeleteTemplate = React.useCallback(
+    async (id: number) => {
+      const confirmed = window.confirm("템플릿을 삭제할까요?");
+      if (!confirmed) return;
+      try {
+        await del(`/api/posts/templates/${id}`, { withAuth: true });
+        setTemplateList((prev) => prev.filter((item) => item.id !== id));
+        toast.success("템플릿을 삭제했습니다.");
+      } catch (error) {
+        console.error(error);
+        toast.error("템플릿 삭제에 실패했습니다.");
+      }
+    },
+    []
+  );
+
+  const handleSaveTemplate = React.useCallback(async () => {
+    const content =
+      templateEditor?.state.doc
+        ? docToMarkdown(templateEditor.state.doc, { paragraphSeparator: "\n" })
+        : templateForm.content;
+    if (!templateForm.name.trim()) {
+      toast.error("템플릿 이름을 입력하세요.");
+      return;
+    }
+    if (!templateForm.title.trim() || !content.trim()) {
+      toast.error("템플릿 제목과 본문을 입력하세요.");
+      return;
+    }
+    setTemplateSaving(true);
+    try {
+      if (templateMode === "create") {
+        await post(
+          "/api/posts/templates",
+          {
+            name: templateForm.name.trim(),
+            title: templateForm.title.trim(),
+            content,
+          },
+          { withAuth: true }
+        );
+        toast.success("템플릿을 추가했습니다.");
+      } else if (templateMode === "edit" && templateForm.id) {
+        await put(
+          `/api/posts/templates/${templateForm.id}`,
+          {
+            name: templateForm.name.trim(),
+            title: templateForm.title.trim(),
+            content,
+          },
+          { withAuth: true }
+        );
+        toast.success("템플릿을 수정했습니다.");
+      }
+      resetTemplateForm();
+      setTemplateMode("list");
+      await loadTemplateList();
+    } catch (error) {
+      console.error(error);
+      toast.error("템플릿 저장에 실패했습니다.");
+    } finally {
+      setTemplateSaving(false);
+    }
+  }, [loadTemplateList, resetTemplateForm, templateEditor, templateForm, templateMode]);
+
   const handleTagKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
@@ -513,6 +716,7 @@ export default function WritePage() {
       });
       const html = markdownToHtml(markdown, {
         preserveEmptyLines: true,
+        highlight: true,
       });
       setPreviewHtml(html);
     };
@@ -745,6 +949,7 @@ export default function WritePage() {
             ) : (
               <div
                 ref={previewRef}
+                className="tiptap-preview"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             )}
@@ -753,6 +958,13 @@ export default function WritePage() {
       </section>
 
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-neutral-200 bg-white/90 px-6 py-4 backdrop-blur">
+        <button
+          type="button"
+          onClick={openTemplateModal}
+          className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-600 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:text-neutral-900"
+        >
+          불러오기
+        </button>
         <button
           type="button"
           onClick={handleTempSave}
@@ -775,6 +987,258 @@ export default function WritePage() {
           저장
         </button>
       </footer>
+
+      {templateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
+          <div
+            className={`w-full rounded-2xl bg-white p-6 shadow-2xl ${
+              templateMode === "list"
+                ? "max-w-2xl"
+                : "max-w-4xl max-h-[85vh] flex flex-col"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold text-neutral-900">
+                템플릿{" "}
+                {templateMode === "list"
+                  ? "불러오기"
+                  : templateMode === "create"
+                    ? "추가"
+                    : "편집"}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTemplateOpen(false);
+                  setTemplateMode("list");
+                  resetTemplateForm();
+                }}
+                className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500 hover:border-neutral-400"
+              >
+                닫기
+              </button>
+            </div>
+
+            {templateMode === "list" ? (
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-neutral-500">
+                    템플릿을 선택하면 바로 적용됩니다.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetTemplateForm();
+                      setTemplateMode("create");
+                    }}
+                    className="rounded-full border border-neutral-900 px-4 py-2 text-xs font-semibold text-neutral-900 hover:bg-neutral-900 hover:text-white"
+                  >
+                    추가하기
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {templateLoading && (
+                    <div className="text-sm text-neutral-400">불러오는 중...</div>
+                  )}
+                  {!templateLoading && templateList.length === 0 && (
+                    <div className="text-sm text-neutral-400">
+                      저장된 템플릿이 없습니다.
+                    </div>
+                  )}
+                  {!templateLoading &&
+                    templateList.map((item) => (
+                      <div
+                        key={item.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleSelectTemplate(item.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSelectTemplate(item.id);
+                          }
+                        }}
+                        className="group relative cursor-pointer rounded-xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:border-neutral-400 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+                      >
+                        <div className="text-sm font-semibold text-neutral-900">
+                          {item.name}
+                        </div>
+                        <div className="absolute right-3 top-3 flex gap-2 opacity-0 transition group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleEditTemplate(item.id);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
+                            aria-label="템플릿 수정"
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.592c.55 0 1.02.398 1.11.94l.214 1.281c.07.424.37.776.778.93.5.19.96.42 1.377.68.36.22.82.21 1.18-.02l1.12-.7c.48-.3 1.11-.24 1.53.16l1.83 1.83c.4.4.46 1.03.16 1.53l-.7 1.12c-.23.36-.24.82-.02 1.18.26.42.49.88.68 1.38.15.41.5.71.93.78l1.28.21c.54.09.94.56.94 1.11v2.59c0 .55-.4 1.02-.94 1.11l-1.28.21c-.43.07-.78.37-.93.78-.19.5-.42.96-.68 1.38-.22.36-.21.82.02 1.18l.7 1.12c.3.5.24 1.13-.16 1.53l-1.83 1.83c-.4.4-1.03.46-1.53.16l-1.12-.7c-.36-.23-.82-.24-1.18-.02-.42.26-.88.49-1.38.68-.41.15-.71.5-.78.93l-.21 1.28c-.09.54-.56.94-1.11.94h-2.59c-.55 0-1.02-.4-1.11-.94l-.21-1.28c-.07-.43-.37-.78-.78-.93-.5-.19-.96-.42-1.38-.68-.36-.22-.82-.21-1.18.02l-1.12.7c-.5.3-1.13.24-1.53-.16l-1.83-1.83c-.4-.4-.46-1.03-.16-1.53l.7-1.12c.23-.36.24-.82.02-1.18-.26-.42-.49-.88-.68-1.38-.15-.41-.5-.71-.93-.78l-1.28-.21c-.54-.09-.94-.56-.94-1.11v-2.59c0-.55.4-1.02.94-1.11l1.28-.21c.43-.07.78-.37.93-.78.19-.5.42-.96.68-1.38.22-.36.21-.82-.02-1.18l-.7-1.12c-.3-.5-.24-1.13.16-1.53l1.83-1.83c.4-.4 1.03-.46 1.53-.16l1.12.7c.36.23.82.24 1.18.02.42-.26.88-.49 1.38-.68.41-.15.71-.5.78-.93l.21-1.28z" />
+                              <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDeleteTemplate(item.id);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
+                            aria-label="템플릿 삭제"
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4h8v2" />
+                              <path d="M6 6l1 14h10l1-14" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-1 flex-col gap-4 overflow-hidden">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-neutral-500">
+                    템플릿 이름
+                  </label>
+                  <input
+                    value={templateForm.name}
+                    onChange={(event) =>
+                      setTemplateForm((prev) => ({ ...prev, name: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-neutral-500">
+                    제목
+                  </label>
+                  <input
+                    value={templateForm.title}
+                    onChange={(event) =>
+                      setTemplateForm((prev) => ({ ...prev, title: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+                <div className="flex flex-1 flex-col gap-3 overflow-hidden">
+                  <label className="mb-1 block text-xs font-semibold text-neutral-500">
+                    본문
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => templateEditor?.chain().focus().toggleBold().run()}
+                      className={`toolbar-pill ${templateEditor?.isActive("bold") ? "is-active" : ""}`}
+                    >
+                      Bold
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => templateEditor?.chain().focus().toggleItalic().run()}
+                      className={`toolbar-pill ${templateEditor?.isActive("italic") ? "is-active" : ""}`}
+                    >
+                      Italic
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        templateEditor?.chain().focus().toggleHeading({ level: 1 }).run()
+                      }
+                      className={`toolbar-pill ${templateEditor?.isActive("heading", { level: 1 }) ? "is-active" : ""}`}
+                    >
+                      H1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        templateEditor?.chain().focus().toggleHeading({ level: 2 }).run()
+                      }
+                      className={`toolbar-pill ${templateEditor?.isActive("heading", { level: 2 }) ? "is-active" : ""}`}
+                    >
+                      H2
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        templateEditor?.chain().focus().toggleHeading({ level: 3 }).run()
+                      }
+                      className={`toolbar-pill ${templateEditor?.isActive("heading", { level: 3 }) ? "is-active" : ""}`}
+                    >
+                      H3
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => templateEditor?.chain().focus().toggleBulletList().run()}
+                      className={`toolbar-pill ${templateEditor?.isActive("bulletList") ? "is-active" : ""}`}
+                    >
+                      List
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => templateEditor?.chain().focus().toggleCodeBlock().run()}
+                      className={`toolbar-pill ${templateEditor?.isActive("codeBlock") ? "is-active" : ""}`}
+                    >
+                      Code
+                    </button>
+                  </div>
+                  <div className="relative flex-1 min-h-[420px] sm:min-h-[640px] overflow-auto rounded-2xl border border-neutral-200 bg-white/70 p-3">
+                    {templateEditorEmpty && (
+                      <div className="pointer-events-none absolute left-4 top-3 text-neutral-400">
+                        템플릿 본문을 입력하세요. (Markdown 지원)
+                      </div>
+                    )}
+                    <EditorContent editor={templateEditor} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplateMode("list");
+                      resetTemplateForm();
+                    }}
+                    className="rounded-full border border-neutral-300 px-5 py-2 text-xs font-semibold text-neutral-600 hover:border-neutral-500 hover:text-neutral-900"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTemplate}
+                    disabled={templateSaving}
+                    className="rounded-full bg-neutral-900 px-5 py-2 text-xs font-semibold text-white hover:bg-black disabled:opacity-60"
+                  >
+                    {templateSaving ? "저장 중..." : "저장"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
