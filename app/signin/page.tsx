@@ -19,12 +19,14 @@ export default function SigninPage() {
     e.preventDefault();
 
     try {
-      const response = await post<{ accessToken: string }>("/api/members/sign-in", {
+      const response = await post<{ accessToken: string; id: number; nickname: string }>("/api/members/sign-in", {
         email,
         password,
       });
 
       setToken(response.data.accessToken);
+      localStorage.setItem("id", String(response.data.id));
+      localStorage.setItem("nickname", response.data.nickname);
       toast.success("로그인이 완료되었습니다.");
       router.push("/");
     } catch (err) {

@@ -28,9 +28,15 @@ export function removeToken(storage?: TokenStorage) {
   if (storage) {
     const store = getStorage(storage);
     store?.removeItem("jwt");
+    store?.removeItem("id");
+    store?.removeItem("nickname");
   } else {
     localStorage.removeItem("jwt");
+    localStorage.removeItem("id");
+    localStorage.removeItem("nickname");
     sessionStorage.removeItem("jwt");
+    sessionStorage.removeItem("id");
+    sessionStorage.removeItem("nickname");
   }
 
   window.dispatchEvent(new CustomEvent("auth-change"));
