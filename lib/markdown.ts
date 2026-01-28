@@ -1,4 +1,5 @@
 import type { Fragment, Node as ProseMirrorNode, Slice } from "prosemirror-model";
+import { common, createLowlight } from "lowlight";
 
 type MarkdownOptions = {
   highlight?: boolean;
@@ -8,8 +9,16 @@ type MarkdownOptions = {
 
 // Note: code-block UI actions (language selector/copy) live in `app/write/page.tsx` with TipTap.
 
-const JS_KEYWORDS =
-  /\b(const|let|var|function|return|import|export|default|type|interface|class|extends|implements|async|await|if|else|for|while|switch|case|break|continue|new|try|catch|throw)\b/g;
+type HastNode = {
+  type: string;
+  value?: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+};
+
+let lowlightInstance: ReturnType<typeof createLowlight> | null = null;
+let lowlightLanguages: Set<string> | null = null;
 
 function escapeHtml(value: string) {
   return value
@@ -46,11 +55,57 @@ function formatInline(value: string) {
   return text;
 }
 
+function getLowlight() {
+  if (!lowlightInstance) {
+    lowlightInstance = createLowlight(common);
+    lowlightLanguages = new Set(lowlightInstance.listLanguages?.() ?? []);
+  }
+  return lowlightInstance;
+}
+
+function hastToHtml(node: HastNode): string {
+  if (node.type === "text") {
+    return escapeHtml(node.value ?? "");
+  }
+  if (node.type === "root") {
+    return (node.children ?? []).map(hastToHtml).join("");
+  }
+  if (node.type === "element") {
+    const tag = node.tagName ?? "span";
+    const className = (() => {
+      const raw = node.properties?.className;
+      if (Array.isArray(raw)) return raw.filter(Boolean).join(" ");
+      if (typeof raw === "string") return raw;
+      return "";
+    })();
+    const attrs = className ? ` class="${className}"` : "";
+    const children = (node.children ?? []).map(hastToHtml).join("");
+    return `<${tag}${attrs}>${children}</${tag}>`;
+  }
+  return "";
+}
+
 function highlightCode(code: string, language?: string) {
-  if (!language) return code;
-  const lang = language.toLowerCase();
-  if (!["js", "ts", "javascript", "typescript"].includes(lang)) return code;
-  return code.replace(JS_KEYWORDS, '<span class="token keyword">$1</span>');
+  const lowlight = getLowlight();
+  const lang = language?.toLowerCase();
+  const hasLanguage = lang && lowlightLanguages?.has(lang);
+  let tree: HastNode | null = null;
+
+  if (hasLanguage) {
+    tree = lowlight.highlight(lang as string, code) as unknown as HastNode;
+  } else if ("highlightAuto" in lowlight) {
+    const auto = (lowlight as unknown as { highlightAuto: (value: string) => HastNode })
+      .highlightAuto;
+    tree = auto(code);
+  } else if (lowlightLanguages?.has("plaintext")) {
+    tree = lowlight.highlight("plaintext", code) as unknown as HastNode;
+  }
+
+  if (!tree) {
+    return escapeHtml(code);
+  }
+
+  return hastToHtml(tree);
 }
 
 export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) {
@@ -132,8 +187,10 @@ export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) 
         i += 1;
       }
       i += 1;
-      const escaped = escapeHtml(codeLines.join("\n"));
-      const highlighted = options.highlight ? highlightCode(escaped, lang) : escaped;
+      const rawCode = codeLines.join("\n");
+      const highlighted = options.highlight
+        ? highlightCode(rawCode, lang)
+        : escapeHtml(rawCode);
       const languageClass = lang ? ` language-${lang}` : "";
       blocks.push(
         `<pre class="md-code"><code class="md-code-inner${languageClass}">${highlighted}</code></pre>`
