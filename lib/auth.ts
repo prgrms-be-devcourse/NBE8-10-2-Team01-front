@@ -45,3 +45,25 @@ export function removeToken(storage?: TokenStorage) {
 export function isAuthed() {
   return !!getToken();
 }
+
+// ✅ 추가: ID 가져오기
+export function getMyId(storage?: TokenStorage): number | null {
+  if (storage) {
+    const store = getStorage(storage);
+    const id = store?.getItem("id");
+    return id ? Number(id) : null;
+  }
+  if (typeof window === "undefined") return null;
+  const id = localStorage.getItem("id") ?? sessionStorage.getItem("id");
+  return id ? Number(id) : null;
+}
+
+// ✅ 추가: 닉네임 가져오기
+export function getMyNickname(storage?: TokenStorage): string | null {
+  if (storage) {
+    const store = getStorage(storage);
+    return store?.getItem("nickname") ?? null;
+  }
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("nickname") ?? sessionStorage.getItem("nickname");
+}
