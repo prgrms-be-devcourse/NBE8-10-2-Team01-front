@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
-import { post } from "@/lib/apiClient";
+import { post, put } from "@/lib/apiClient";
 import { renderMarkdown } from "@/lib/markdown";
 import { uploadImageFile } from "@/lib/imageUpload";
 import {
@@ -14,7 +14,7 @@ import {
 } from "@/lib/thumbnail";
 import { clearWriteDraft, loadWriteDraft, type WriteDraft } from "@/lib/writeDraft";
 
-type ThumbnailSource = "content" | "upload" | "default";
+type ThumbnailSource = "content" | "upload" | "default" | "existing";
 
 type ThumbnailOption = {
   id: string;
@@ -118,6 +118,17 @@ export default function WriteConfirmPage() {
   }, [defaultThumbnails]);
 
   const options = React.useMemo<ThumbnailOption[]>(() => {
+    const fromExisting =
+      draft?.thumbnail && draft.thumbnail.trim()
+        ? [
+            {
+              id: "existing",
+              url: draft.thumbnail.trim(),
+              label: "기존 썸네일",
+              source: "existing" as const,
+            },
+          ]
+        : [];
     const fromContent = contentImageUrls.map((url, index) => ({
       id: `content-${index + 1}`,
       url,
@@ -142,20 +153,27 @@ export default function WriteConfirmPage() {
         };
       })
       .filter((item): item is ThumbnailOption => item !== null);
-    return [...fromContent, ...fromUploads, ...fromDefaults];
-  }, [contentImageUrls, defaultPreviewUrls, defaultThumbnails, uploadedThumbs]);
+    return [...fromExisting, ...fromContent, ...fromUploads, ...fromDefaults];
+  }, [contentImageUrls, defaultPreviewUrls, defaultThumbnails, draft, uploadedThumbs]);
 
   React.useEffect(() => {
     if (options.length === 0) return;
     if (selectedId) return;
+    const firstExisting = options.find((item) => item.source === "existing");
     const firstContent = options.find((item) => item.source === "content");
-    setSelectedId((firstContent ?? options[0]).id);
+    setSelectedId((firstExisting ?? firstContent ?? options[0]).id);
   }, [options, selectedId]);
 
   const selectedOption = options.find((item) => item.id === selectedId) ?? null;
 
   const reuploadThumbnailIfNeeded = React.useCallback(async (option: ThumbnailOption) => {
-    if (option.source === "upload" || option.source === "content") return option.url;
+    if (
+      option.source === "upload" ||
+      option.source === "content" ||
+      option.source === "existing"
+    ) {
+      return option.url;
+    }
 
     try {
       if (option.source === "default") {
@@ -220,21 +238,46 @@ export default function WriteConfirmPage() {
     setIsSubmitting(true);
     try {
       const thumbnailUrl = await reuploadThumbnailIfNeeded(selectedOption);
-      await post(
-        "/api/posts",
-        {
-          title: draft.title,
-          content: draft.content,
-          thumbnail: thumbnailUrl,
-        },
-        { withAuth: true }
-      );
-      clearWriteDraft();
-      toast.success("저장되었습니다.");
-      router.push("/home");
+      if (draft.postId) {
+        await put(
+          `/api/posts/${draft.postId}`,
+          {
+            title: draft.title,
+            content: draft.content,
+            thumbnail: thumbnailUrl,
+          },
+          { withAuth: true }
+        );
+        try {
+          window.sessionStorage.setItem(
+            "post-cache-bust",
+            String(draft.postId)
+          );
+        } catch {
+          // ignore cache bust failures
+        }
+        clearWriteDraft();
+        toast.success("수정되었습니다.");
+        router.push(`/posts/${draft.postId}`);
+      } else {
+        await post(
+          "/api/posts",
+          {
+            title: draft.title,
+            content: draft.content,
+            thumbnail: thumbnailUrl,
+          },
+          { withAuth: true }
+        );
+        clearWriteDraft();
+        toast.success("저장되었습니다.");
+        router.push("/home");
+      }
     } catch (error) {
       console.error(error);
-      toast.error("저장에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      toast.error(
+        draft.postId ? "수정에 실패했습니다. 잠시 후 다시 시도해 주세요." : "저장에 실패했습니다. 잠시 후 다시 시도해 주세요."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -275,7 +318,11 @@ export default function WriteConfirmPage() {
               </button>
               <button
                 type="button"
-                onClick={() => router.push("/write")}
+                onClick={() =>
+                  draft?.postId
+                    ? router.push(`/write?mode=edit&postId=${draft.postId}`)
+                    : router.push("/write")
+                }
                 className="rounded-full border border-neutral-300 px-5 py-2 text-sm font-semibold text-neutral-700 transition hover:border-neutral-900 hover:text-neutral-900"
               >
                 이전으로
@@ -360,7 +407,13 @@ export default function WriteConfirmPage() {
               disabled={isSubmitting || !selectedOption}
               className="rounded-2xl bg-neutral-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "저장 중..." : "이 설정으로 저장"}
+              {isSubmitting
+                ? draft?.postId
+                  ? "수정 중..."
+                  : "저장 중..."
+                : draft?.postId
+                ? "이 설정으로 수정"
+                : "이 설정으로 저장"}
             </button>
           </aside>
         </section>
@@ -368,7 +421,9 @@ export default function WriteConfirmPage() {
         <section className="rounded-2xl border border-neutral-200 bg-white p-6">
           <header className="flex flex-col gap-1">
             <h2 className="text-xl font-semibold">{draft.title}</h2>
-            <p className="text-xs text-neutral-500">저장 전 본문 미리보기</p>
+            <p className="text-xs text-neutral-500">
+              {draft.postId ? "수정 전 본문 미리보기" : "저장 전 본문 미리보기"}
+            </p>
           </header>
           <div
             className="mt-6 text-sm"

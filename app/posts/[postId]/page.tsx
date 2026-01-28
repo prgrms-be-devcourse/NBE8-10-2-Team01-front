@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
-import { del, get, post, put } from "@/lib/apiClient";
+import { useParams, useRouter } from "next/navigation";
+import { del, get, post } from "@/lib/apiClient";
 import { getToken } from "@/lib/auth";
 import { formatDateTime } from "@/lib/date";
 import { markdownToHtml } from "@/lib/markdown";
@@ -22,7 +22,9 @@ type ReplyInfoRes = {
   content: string;
   parentCommentId: number;
   authorId: number;
-  authorNickname: string;
+  authorNickname?: string;
+  nickname?: string;
+  profileUrl?: string | null;
   createDate: string | null;
   modifyDate: string | null;
 };
@@ -31,7 +33,9 @@ type CommentInfoRes = {
   id: number;
   content: string;
   authorId: number;
-  authorNickname: string;
+  authorNickname?: string;
+  nickname?: string;
+  profileUrl?: string | null;
   postId: number;
   createDate: string | null;
   modifyDate: string | null;
@@ -47,6 +51,12 @@ type PostInfoRes = {
   viewCount: number;
   createDate: string | null;
   modifyDate: string | null;
+  authorId?: number | null;
+  memberId?: number | null;
+  userId?: number | null;
+  nickname?: string | null;
+  profileImage?: string | null;
+  thumbnail?: string | null;
   comments?: Slice<CommentInfoRes> | null;
 };
 
@@ -75,9 +85,52 @@ type ReplyCache = Record<
   }
 >;
 
+const postRequestCache = new Map<string, Promise<PostInfoRes>>();
+const fallbackAvatar =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e2e8f0"/><stop offset="100%" stop-color="#cbd5f5"/></linearGradient></defs><rect width="96" height="96" rx="48" fill="url(#g)"/><circle cx="48" cy="38" r="16" fill="#ffffff"/><path d="M20 80c4-16 20-24 28-24s24 8 28 24" fill="#ffffff"/></svg>'
+  );
+
+async function fetchPostOnce(postId: string) {
+  const cached = postRequestCache.get(postId);
+  if (cached) return cached;
+  const request = get(`/api/posts/${postId}`, { withAuth: true })
+    .then((response) => response.data as PostInfoRes)
+    .catch((error) => {
+      postRequestCache.delete(postId);
+      throw error;
+    });
+  postRequestCache.set(postId, request);
+  return request;
+}
+
 function getDateLabel(dateValue: string | null | undefined) {
   if (!dateValue) return "";
   return formatDateTime(dateValue, "ko-KR");
+}
+
+function getDisplayName(
+  person?: { nickname?: string | null; authorNickname?: string | null }
+) {
+  return person?.nickname ?? person?.authorNickname ?? "작성자";
+}
+
+function getProfileUrl(person?: { profileUrl?: string | null }) {
+  return person?.profileUrl ?? null;
+}
+
+function getProfileUrlOrFallback(person?: { profileUrl?: string | null }) {
+  return getProfileUrl(person) ?? fallbackAvatar;
+}
+
+function getPostAuthorId(post?: PostInfoRes | null) {
+  if (!post) return null;
+  const candidates = [post.authorId, post.memberId, post.userId];
+  for (const value of candidates) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return null;
 }
 
 function mergeById<T extends { id: number }>(prev: T[], next: T[]) {
@@ -139,8 +192,37 @@ export default function PostDetailPage() {
   const [replyOpen, setReplyOpen] = React.useState<Record<number, boolean>>({});
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [editingContent, setEditingContent] = React.useState("");
+  const router = useRouter();
+  const initialCommentsAppliedRef = React.useRef<string | null>(null);
+  const commentsCacheHitRef = React.useRef(false);
 
   const myId = React.useMemo(() => getMyIdFromToken(), []);
+  const isOwner = React.useMemo(() => {
+    if (!postData || myId === null) return false;
+    const authorId = getPostAuthorId(postData);
+    if (authorId !== null) return authorId === myId;
+    if (postData.nickname && typeof postData.nickname === "string") {
+      const token = getToken();
+      if (token) {
+        const parts = token.split(".");
+        if (parts.length >= 2) {
+          const payloadText = decodeBase64Url(parts[1]);
+          if (payloadText) {
+            try {
+              const payload = JSON.parse(payloadText) as Record<string, unknown>;
+              const nickname = payload.nickname;
+              if (typeof nickname === "string" && nickname.trim()) {
+                return nickname === postData.nickname;
+              }
+            } catch {
+              return false;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }, [myId, postData]);
 
   const commentCacheKey = React.useMemo(
     () => (postId ? `post-comments:${postId}` : null),
@@ -151,18 +233,40 @@ export default function PostDetailPage() {
     [postId]
   );
 
+  React.useEffect(() => {
+    if (!postId) return;
+    try {
+      const cacheBust = window.sessionStorage.getItem("post-cache-bust");
+      if (cacheBust && cacheBust === String(postId)) {
+        postRequestCache.delete(String(postId));
+        window.sessionStorage.removeItem("post-cache-bust");
+      }
+    } catch {
+      // ignore cache bust failures
+    }
+  }, [postId]);
+
+  React.useEffect(() => {
+    initialCommentsAppliedRef.current = null;
+    commentsCacheHitRef.current = false;
+  }, [postId]);
+
   const loadPost = React.useCallback(async () => {
     if (!postId) return;
-    const response = await get(`/api/posts/${postId}`, { withAuth: true });
-    const data = response.data as PostInfoRes;
+    const data = await fetchPostOnce(postId);
     setPostData(data);
 
     const initialComments = data.comments?.content ?? [];
-    if (initialComments.length > 0 && comments.length === 0) {
+    if (
+      initialComments.length > 0 &&
+      !commentsCacheHitRef.current &&
+      initialCommentsAppliedRef.current !== postId
+    ) {
       setComments(initialComments);
       setCommentPage(data.comments?.number ?? 0);
       setHasNextComments(!(data.comments?.last ?? initialComments.length === 0));
       setCommentPagesFetched(new Set([data.comments?.number ?? 0]));
+      initialCommentsAppliedRef.current = postId;
 
       const nextReplyState: Record<number, ReplyState> = {};
       initialComments.forEach((comment) => {
@@ -182,7 +286,7 @@ export default function PostDetailPage() {
       });
       setReplyState((prev) => ({ ...prev, ...nextReplyState }));
     }
-  }, [comments.length, postId]);
+  }, [postId]);
 
   const loadComments = React.useCallback(
     async (page: number, append: boolean, force = false) => {
@@ -212,6 +316,9 @@ export default function PostDetailPage() {
       const raw = window.sessionStorage.getItem(commentCacheKey);
       if (!raw) return;
       const cache = JSON.parse(raw) as CommentCache;
+      const hasCache =
+        (cache.items?.length ?? 0) > 0 || (cache.pagesFetched?.length ?? 0) > 0;
+      commentsCacheHitRef.current = hasCache;
       setComments(cache.items ?? []);
       setCommentPage(cache.page ?? 0);
       setHasNextComments(Boolean(cache.hasNext));
@@ -251,9 +358,6 @@ export default function PostDetailPage() {
     const run = async () => {
       try {
         await loadPost();
-        if (!commentPagesFetched.has(0)) {
-          await loadComments(0, false);
-        }
       } finally {
         if (active) setLoading(false);
       }
@@ -262,7 +366,7 @@ export default function PostDetailPage() {
     return () => {
       active = false;
     };
-  }, [commentPagesFetched, loadComments, loadPost, postId]);
+  }, [loadPost, postId]);
 
   React.useEffect(() => {
     if (!commentCacheKey) return;
@@ -528,6 +632,25 @@ export default function PostDetailPage() {
     [myId, postId, replyInputs]
   );
 
+  const startEditPost = React.useCallback(() => {
+    if (!postId) return;
+    router.push(`/write?mode=edit&postId=${postId}`);
+  }, [postId, router]);
+
+  const handleDeletePost = React.useCallback(async () => {
+    if (!postId) return;
+    const confirmed = window.confirm("게시글을 삭제할까요?");
+    if (!confirmed) return;
+    try {
+      await del(`/api/posts/${postId}`, { withAuth: true });
+      toast.success("게시글을 삭제했습니다.");
+      window.location.href = "/home";
+    } catch (error) {
+      console.error(error);
+      toast.error("게시글 삭제에 실패했습니다.");
+    }
+  }, [postId]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-20 text-neutral-900">
@@ -562,17 +685,45 @@ export default function PostDetailPage() {
     <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-20 text-neutral-900">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
         <section className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
-          <div className="text-3xl font-bold text-neutral-900">{postData.title}</div>
-          <div className="mt-2 text-sm text-neutral-500">{metaText}</div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="text-3xl font-bold text-neutral-900">{postData.title}</div>
+            {isOwner && (
+              <div className="flex gap-4 text-sm font-semibold text-blue-600">
+                <button
+                  type="button"
+                  onClick={startEditPost}
+                  className="cursor-pointer transition hover:text-blue-800"
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeletePost}
+                  className="cursor-pointer transition hover:text-blue-800"
+                >
+                  삭제
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
+            <img
+              src={postData.profileImage ?? fallbackAvatar}
+              alt=""
+              className="h-10 w-10 rounded-full object-cover"
+            />
+            <div className="flex flex-col">
+              <div className="text-sm font-semibold text-neutral-700">
+                {postData.nickname ?? "작성자"}
+              </div>
+              <div className="text-xs text-neutral-500">{metaText}</div>
+            </div>
+          </div>
           <div className="mt-6">
             <div
               className="tiptap-preview"
               dangerouslySetInnerHTML={{ __html: contentHtml }}
             />
-          </div>
-          <div className="mt-8 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-neutral-200" />
-            <div className="h-4 w-24 rounded-full bg-neutral-200" />
           </div>
         </section>
 
@@ -605,6 +756,10 @@ export default function PostDetailPage() {
               const isEditingComment = editingId === comment.id;
               const replyInputValue = replyInputs[comment.id] ?? "";
               const isReplyOpen = replyOpen[comment.id] ?? false;
+              const commentAuthorLabel =
+                myId !== null && myId === comment.authorId
+                  ? "나"
+                  : getDisplayName(comment);
               const shouldShowLoadReplies = replies ? replies.hasNext : comment.replyCount > 0;
               const displayedReplyCount =
                 replies?.items.length ?? comment.previewReplies?.content?.length ?? 0;
@@ -616,8 +771,15 @@ export default function PostDetailPage() {
                   className="rounded-xl border border-neutral-200 bg-white p-4"
                 >
                   <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm font-semibold text-neutral-900">
-                      {comment.authorNickname ?? "작성자"}
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={getProfileUrlOrFallback(comment)}
+                        alt=""
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                      <div className="text-sm font-semibold text-neutral-900">
+                        {commentAuthorLabel}
+                      </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <div className="text-xs text-neutral-500">{commentDate}</div>
@@ -721,9 +883,16 @@ export default function PostDetailPage() {
                             }`}
                           >
                             <div className="flex items-center justify-between text-xs text-neutral-500">
-                              <span className="font-semibold text-neutral-700">
-                                {reply.authorNickname ?? "작성자"}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={getProfileUrlOrFallback(reply)}
+                                  alt=""
+                                  className="h-6 w-6 rounded-full object-cover"
+                                />
+                                <span className="font-semibold text-neutral-700">
+                                  {getDisplayName(reply)}
+                                </span>
+                              </div>
                               <div className="flex flex-col items-end gap-1">
                                 <span>{replyDate}</span>
                                 {showReplyActions && !isEditingReply && (
