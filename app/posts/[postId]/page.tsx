@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import { del, get, post } from "@/lib/apiClient";
-import { getToken } from "@/lib/auth";
+import { getMyId, getMyNickname, isAuthed } from "@/lib/auth";
 import { formatDateTime } from "@/lib/date";
 import { markdownToHtml } from "@/lib/markdown";
 import { toast } from "react-hot-toast";
@@ -54,6 +54,7 @@ type PostInfoRes = {
   authorId?: number | null;
   memberId?: number | null;
   userId?: number | null;
+  hashtags?: string[] | null;
   nickname?: string | null;
   profileImage?: string | null;
   thumbnail?: string | null;
@@ -140,39 +141,6 @@ function mergeById<T extends { id: number }>(prev: T[], next: T[]) {
   return Array.from(map.values());
 }
 
-function decodeBase64Url(input: string) {
-  try {
-    const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
-    return atob(padded);
-  } catch {
-    return "";
-  }
-}
-
-function getMyIdFromToken() {
-  const token = getToken();
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  const payloadText = decodeBase64Url(parts[1]);
-  if (!payloadText) return null;
-  try {
-    const payload = JSON.parse(payloadText) as Record<string, unknown>;
-    const candidates = [payload.id, payload.memberId, payload.userId, payload.sub];
-    for (const value of candidates) {
-      if (typeof value === "number" && Number.isFinite(value)) return value;
-      if (typeof value === "string" && value.trim()) {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) return parsed;
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export default function PostDetailPage() {
   const params = useParams<{ postId: string }>();
   const postId = params?.postId;
@@ -196,33 +164,20 @@ export default function PostDetailPage() {
   const initialCommentsAppliedRef = React.useRef<string | null>(null);
   const commentsCacheHitRef = React.useRef(false);
 
-  const myId = React.useMemo(() => getMyIdFromToken(), []);
+  const myId = React.useMemo(() => getMyId(), []);
+  const myNickname = React.useMemo(() => getMyNickname(), []);
+  const isLoggedIn = React.useMemo(() => isAuthed(), []);
   const isOwner = React.useMemo(() => {
-    if (!postData || myId === null) return false;
+    if (!postData) return false;
     const authorId = getPostAuthorId(postData);
-    if (authorId !== null) return authorId === myId;
+    if (authorId !== null && myId !== null) return authorId === myId;
     if (postData.nickname && typeof postData.nickname === "string") {
-      const token = getToken();
-      if (token) {
-        const parts = token.split(".");
-        if (parts.length >= 2) {
-          const payloadText = decodeBase64Url(parts[1]);
-          if (payloadText) {
-            try {
-              const payload = JSON.parse(payloadText) as Record<string, unknown>;
-              const nickname = payload.nickname;
-              if (typeof nickname === "string" && nickname.trim()) {
-                return nickname === postData.nickname;
-              }
-            } catch {
-              return false;
-            }
-          }
-        }
+      if (myNickname && myNickname.trim()) {
+        return myNickname === postData.nickname;
       }
     }
     return false;
-  }, [myId, postData]);
+  }, [myId, myNickname, postData]);
 
   const commentCacheKey = React.useMemo(
     () => (postId ? `post-comments:${postId}` : null),
@@ -676,6 +631,7 @@ export default function PostDetailPage() {
   const metaText = dateText
     ? `${dateText} · 조회 ${postData.viewCount ?? 0}`
     : `조회 ${postData.viewCount ?? 0}`;
+  const hashtags = Array.isArray(postData.hashtags) ? postData.hashtags : [];
   const contentHtml = markdownToHtml(postData.content ?? "", {
     preserveEmptyLines: true,
     highlight: true,
@@ -719,6 +675,20 @@ export default function PostDetailPage() {
               <div className="text-xs text-neutral-500">{metaText}</div>
             </div>
           </div>
+          <div className="mt-3 flex min-h-[28px] flex-wrap gap-2">
+            {hashtags.length > 0 ? (
+              hashtags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-semibold text-neutral-700"
+                >
+                  #{tag}
+                </span>
+              ))
+            ) : (
+              <div className="h-6 w-full" />
+            )}
+          </div>
           <div className="mt-6">
             <div
               className="tiptap-preview"
@@ -730,23 +700,25 @@ export default function PostDetailPage() {
         <section className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
           <div className="text-lg font-semibold text-neutral-900">댓글</div>
 
-          <div className="mt-4 flex flex-col gap-3">
-            <textarea
-              value={commentInput}
-              onChange={(event) => setCommentInput(event.target.value)}
-              placeholder="댓글을 입력하세요"
-              className="min-h-[96px] w-full resize-none rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-neutral-400"
-            />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleSubmitComment}
-                className="rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white"
-              >
-                댓글 작성
-              </button>
+          {isLoggedIn && (
+            <div className="mt-4 flex flex-col gap-3">
+              <textarea
+                value={commentInput}
+                onChange={(event) => setCommentInput(event.target.value)}
+                placeholder="댓글을 입력하세요"
+                className="min-h-[96px] w-full resize-none rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-neutral-400"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSubmitComment}
+                  className="rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white"
+                >
+                  댓글 작성
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-6 flex flex-col gap-6">
             {comments.map((comment) => {

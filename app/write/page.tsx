@@ -38,6 +38,7 @@ type PostEditRes = {
   title: string;
   content: string;
   thumbnail?: string | null;
+  hashtags?: string[] | null;
 };
 
 type TemplateFormState = {
@@ -618,6 +619,7 @@ export default function WritePage() {
         const data = response.data;
         setTitle(data.title ?? "");
         setEditThumbnail(data.thumbnail ?? "");
+        setTags(Array.isArray(data.hashtags) ? data.hashtags : []);
         const html = markdownToHtml(data.content ?? "", {
           preserveEmptyLines: true,
           highlight: false,
@@ -646,6 +648,7 @@ export default function WritePage() {
       title: trimmedTitle,
       content: markdown,
       tags,
+      hashtags: tags,
       postId: isEditMode && editPostId ? editPostId : undefined,
       thumbnail: isEditMode ? (editThumbnail ? editThumbnail : null) : undefined,
     };

@@ -18,6 +18,9 @@ type OutputBlockProps = {
   /** 작성자 프로필 이미지 */
   authorImageUrl?: string | null;
 
+  /** 해시태그 */
+  hashtags?: string[];
+
   className?: string;
 };
 
@@ -28,6 +31,7 @@ export function OutputBlock({
   imageUrl,
   authorName,
   authorImageUrl,
+  hashtags,
   className,
 }: OutputBlockProps) {
   const fallbackAvatar =
@@ -63,6 +67,20 @@ export function OutputBlock({
         {meta && <div className="text-xs text-neutral-500">{meta}</div>}
         <div className="whitespace-normal break-words text-sm leading-6 text-neutral-700">
           {summary}
+        </div>
+        <div className="mt-3 flex min-h-[28px] flex-wrap gap-2">
+          {hashtags && hashtags.length > 0 ? (
+            hashtags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-semibold text-neutral-700"
+              >
+                #{tag}
+              </span>
+            ))
+          ) : (
+            <div className="h-6 w-full" />
+          )}
         </div>
         <div className="mt-4 flex items-center gap-3">
           <img

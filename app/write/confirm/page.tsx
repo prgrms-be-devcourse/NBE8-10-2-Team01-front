@@ -244,6 +244,7 @@ export default function WriteConfirmPage() {
           {
             title: draft.title,
             content: draft.content,
+            hashtags: draft.hashtags ?? draft.tags,
             thumbnail: thumbnailUrl,
           },
           { withAuth: true }
@@ -265,6 +266,7 @@ export default function WriteConfirmPage() {
           {
             title: draft.title,
             content: draft.content,
+            hashtags: draft.hashtags ?? draft.tags,
             thumbnail: thumbnailUrl,
           },
           { withAuth: true }

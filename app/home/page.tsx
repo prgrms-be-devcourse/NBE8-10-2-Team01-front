@@ -17,6 +17,7 @@ type PostInfoRes = {
   thumbnail?: string | null;
   nickname?: string | null;
   profileImage?: string | null;
+  hashtags?: string[] | null;
 };
 
 export default function HomePage() {
@@ -84,6 +85,7 @@ export default function HomePage() {
                     imageUrl={post.thumbnail ?? undefined}
                     authorName={post.nickname ?? undefined}
                     authorImageUrl={post.profileImage ?? undefined}
+                    hashtags={post.hashtags ?? undefined}
                   />
                 </Link>
               );
