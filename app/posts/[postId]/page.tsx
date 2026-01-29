@@ -164,9 +164,22 @@ export default function PostDetailPage() {
   const initialCommentsAppliedRef = React.useRef<string | null>(null);
   const commentsCacheHitRef = React.useRef(false);
 
-  const myId = React.useMemo(() => getMyId(), []);
-  const myNickname = React.useMemo(() => getMyNickname(), []);
-  const isLoggedIn = React.useMemo(() => isAuthed(), []);
+  const [myId, setMyId] = React.useState<number | null>(null);
+  const [myNickname, setMyNickname] = React.useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    const syncAuth = () => {
+      setMyId(getMyId());
+      setMyNickname(getMyNickname());
+      setIsLoggedIn(isAuthed());
+    };
+    syncAuth();
+    window.addEventListener("auth-change", syncAuth);
+    return () => {
+      window.removeEventListener("auth-change", syncAuth);
+    };
+  }, []);
   const isOwner = React.useMemo(() => {
     if (!postData) return false;
     const authorId = getPostAuthorId(postData);

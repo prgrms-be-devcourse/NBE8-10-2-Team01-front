@@ -99,10 +99,14 @@ export async function request<T = unknown>(
   options: RequestOptions<T> = {}
 ): Promise<ApiEnvelope<T>> {
   const url = buildUrl(path, options.query);
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string> | undefined),
   };
+  if (!isFormData && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (options.withAuth) {
     const token = options.token ?? getAuthToken();
@@ -118,7 +122,7 @@ export async function request<T = unknown>(
   };
 
   if (options.body !== undefined) {
-    init.body = JSON.stringify(options.body);
+    init.body = isFormData ? (options.body as FormData) : JSON.stringify(options.body);
   }
 
   const response = await fetch(url.toString(), init);
