@@ -2,8 +2,14 @@
 
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { del, get, post } from "@/lib/apiClient";
-import { getMyId, getMyNickname, isAuthed } from "@/lib/auth";
+import Link from "next/link";
+import { del, get, post, put } from "@/lib/apiClient";
+import {
+  getMyId,
+  getMyNickname,
+  getMyProfileImage,
+  isAuthed,
+} from "@/lib/auth";
 import { formatDateTime } from "@/lib/date";
 import { markdownToHtml } from "@/lib/markdown";
 import { toast } from "react-hot-toast";
@@ -25,6 +31,8 @@ type ReplyInfoRes = {
   authorNickname?: string;
   nickname?: string;
   profileUrl?: string | null;
+  profileImageUrl?: string | null;
+  profileImage?: string | null;
   createDate: string | null;
   modifyDate: string | null;
 };
@@ -36,6 +44,8 @@ type CommentInfoRes = {
   authorNickname?: string;
   nickname?: string;
   profileUrl?: string | null;
+  profileImageUrl?: string | null;
+  profileImage?: string | null;
   postId: number;
   createDate: string | null;
   modifyDate: string | null;
@@ -57,6 +67,7 @@ type PostInfoRes = {
   hashtags?: string[] | null;
   nickname?: string | null;
   profileImage?: string | null;
+  profileImageUrl?: string | null;
   thumbnail?: string | null;
   comments?: Slice<CommentInfoRes> | null;
 };
@@ -117,12 +128,32 @@ function getDisplayName(
   return person?.nickname ?? person?.authorNickname ?? "작성자";
 }
 
-function getProfileUrl(person?: { profileUrl?: string | null }) {
-  return person?.profileUrl ?? null;
+function getProfileUrl(
+  person?: {
+    profileUrl?: string | null;
+    profileImageUrl?: string | null;
+    profileImage?: string | null;
+  },
+  overrideUrl?: string | null
+) {
+  return (
+    overrideUrl ??
+    person?.profileUrl ??
+    person?.profileImageUrl ??
+    person?.profileImage ??
+    null
+  );
 }
 
-function getProfileUrlOrFallback(person?: { profileUrl?: string | null }) {
-  return getProfileUrl(person) ?? fallbackAvatar;
+function getProfileUrlOrFallback(
+  person?: {
+    profileUrl?: string | null;
+    profileImageUrl?: string | null;
+    profileImage?: string | null;
+  },
+  overrideUrl?: string | null
+) {
+  return getProfileUrl(person, overrideUrl) ?? fallbackAvatar;
 }
 
 function getPostAuthorId(post?: PostInfoRes | null) {
@@ -166,12 +197,14 @@ export default function PostDetailPage() {
 
   const [myId, setMyId] = React.useState<number | null>(null);
   const [myNickname, setMyNickname] = React.useState<string | null>(null);
+  const [myProfileImage, setMyProfileImage] = React.useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     const syncAuth = () => {
       setMyId(getMyId());
       setMyNickname(getMyNickname());
+      setMyProfileImage(getMyProfileImage());
       setIsLoggedIn(isAuthed());
     };
     syncAuth();
@@ -564,7 +597,11 @@ export default function PostDetailPage() {
           content,
           parentCommentId: parentId,
           authorId: (created as any)?.authorId ?? myId ?? -1,
-          authorNickname: (created as any)?.authorNickname ?? "나",
+          authorNickname:
+            (created as any)?.nickname ??
+            (created as any)?.authorNickname ??
+            myNickname ??
+            "작성자",
           createDate: (created as any)?.createDate ?? new Date().toISOString(),
           modifyDate: (created as any)?.modifyDate ?? null,
         };
@@ -597,7 +634,7 @@ export default function PostDetailPage() {
         toast.error("답글 작성에 실패했습니다.");
       }
     },
-    [myId, postId, replyInputs]
+    [myId, myNickname, postId, replyInputs]
   );
 
   const startEditPost = React.useCallback(() => {
@@ -611,11 +648,11 @@ export default function PostDetailPage() {
     if (!confirmed) return;
     try {
       await del(`/api/posts/${postId}`, { withAuth: true });
-      toast.success("게시글을 삭제했습니다.");
+      toast.success("게시글을 삭제했습니다.", { duration: 4000 });
       window.location.href = "/home";
     } catch (error) {
       console.error(error);
-      toast.error("게시글 삭제에 실패했습니다.");
+      toast.error("게시글 삭제에 실패했습니다.", { duration: 4000 });
     }
   }, [postId]);
 
@@ -649,6 +686,7 @@ export default function PostDetailPage() {
     preserveEmptyLines: true,
     highlight: true,
   });
+  const postAuthorId = getPostAuthorId(postData);
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-20 text-neutral-900">
@@ -676,17 +714,35 @@ export default function PostDetailPage() {
             )}
           </div>
           <div className="mt-3 flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
-            <img
-              src={postData.profileImage ?? fallbackAvatar}
-              alt=""
-              className="h-10 w-10 rounded-full object-cover"
-            />
-            <div className="flex flex-col">
-              <div className="text-sm font-semibold text-neutral-700">
-                {postData.nickname ?? "작성자"}
-              </div>
-              <div className="text-xs text-neutral-500">{metaText}</div>
-            </div>
+            {postAuthorId ? (
+              <Link href={`/members/${postAuthorId}/posts`} className="flex items-center gap-3">
+                <img
+                  src={getProfileUrlOrFallback(postData)}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover"
+                />
+                <div className="flex flex-col">
+                  <div className="text-sm font-semibold text-neutral-700">
+                    {postData.nickname ?? "작성자"}
+                  </div>
+                  <div className="text-xs text-neutral-500">{metaText}</div>
+                </div>
+              </Link>
+            ) : (
+              <>
+                <img
+                  src={getProfileUrlOrFallback(postData)}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover"
+                />
+                <div className="flex flex-col">
+                  <div className="text-sm font-semibold text-neutral-700">
+                    {postData.nickname ?? "작성자"}
+                  </div>
+                  <div className="text-xs text-neutral-500">{metaText}</div>
+                </div>
+              </>
+            )}
           </div>
           <div className="mt-3 flex min-h-[28px] flex-wrap gap-2">
             {hashtags.length > 0 ? (
@@ -741,10 +797,7 @@ export default function PostDetailPage() {
               const isEditingComment = editingId === comment.id;
               const replyInputValue = replyInputs[comment.id] ?? "";
               const isReplyOpen = replyOpen[comment.id] ?? false;
-              const commentAuthorLabel =
-                myId !== null && myId === comment.authorId
-                  ? "나"
-                  : getDisplayName(comment);
+              const commentAuthorLabel = getDisplayName(comment);
               const shouldShowLoadReplies = replies ? replies.hasNext : comment.replyCount > 0;
               const displayedReplyCount =
                 replies?.items.length ?? comment.previewReplies?.content?.length ?? 0;
@@ -756,16 +809,22 @@ export default function PostDetailPage() {
                   className="rounded-xl border border-neutral-200 bg-white p-4"
                 >
                   <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                    <Link
+                      href={`/members/${comment.authorId}/posts`}
+                      className="flex items-center gap-3"
+                    >
                       <img
-                        src={getProfileUrlOrFallback(comment)}
+                        src={getProfileUrlOrFallback(
+                          comment,
+                          comment.authorId === myId ? myProfileImage : null
+                        )}
                         alt=""
                         className="h-8 w-8 rounded-full object-cover"
                       />
                       <div className="text-sm font-semibold text-neutral-900">
                         {commentAuthorLabel}
                       </div>
-                    </div>
+                    </Link>
                     <div className="flex flex-col items-end gap-1">
                       <div className="text-xs text-neutral-500">{commentDate}</div>
                       {showActions && !isEditingComment && (
@@ -809,7 +868,7 @@ export default function PostDetailPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-3 whitespace-pre-line text-sm text-neutral-800">
+                    <div className="mt-3 whitespace-pre-wrap break-words text-sm text-neutral-800">
                       {comment.content}
                     </div>
                   )}
@@ -868,16 +927,22 @@ export default function PostDetailPage() {
                             }`}
                           >
                             <div className="flex items-center justify-between text-xs text-neutral-500">
-                              <div className="flex items-center gap-2">
+                              <Link
+                                href={`/members/${reply.authorId}/posts`}
+                                className="flex items-center gap-2"
+                              >
                                 <img
-                                  src={getProfileUrlOrFallback(reply)}
+                                  src={getProfileUrlOrFallback(
+                                    reply,
+                                    reply.authorId === myId ? myProfileImage : null
+                                  )}
                                   alt=""
                                   className="h-6 w-6 rounded-full object-cover"
                                 />
                                 <span className="font-semibold text-neutral-700">
                                   {getDisplayName(reply)}
                                 </span>
-                              </div>
+                              </Link>
                               <div className="flex flex-col items-end gap-1">
                                 <span>{replyDate}</span>
                                 {showReplyActions && !isEditingReply && (
@@ -924,7 +989,9 @@ export default function PostDetailPage() {
                                 </div>
                               </div>
                             ) : (
-                              <div className="mt-1 whitespace-pre-line">{reply.content}</div>
+                              <div className="mt-1 whitespace-pre-wrap break-words">
+                                {reply.content}
+                              </div>
                             )}
 
                           </div>

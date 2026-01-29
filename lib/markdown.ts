@@ -86,26 +86,18 @@ function hastToHtml(node: HastNode): string {
 }
 
 function highlightCode(code: string, language?: string) {
-  const lowlight = getLowlight();
-  const lang = language?.toLowerCase();
+  const lowlight = getLowlight() as unknown as {
+    highlight: (lang: string, value: string) => HastNode;
+    highlightAuto?: (value: string) => HastNode;
+  };
+  const lang = language?.toLowerCase().trim();
   const hasLanguage = lang && lowlightLanguages?.has(lang);
-  let tree: HastNode | null = null;
-
-  if (hasLanguage) {
-    tree = lowlight.highlight(lang as string, code) as unknown as HastNode;
-  } else if ("highlightAuto" in lowlight) {
-    const auto = (lowlight as unknown as { highlightAuto: (value: string) => HastNode })
-      .highlightAuto;
-    tree = auto(code);
-  } else if (lowlightLanguages?.has("plaintext")) {
-    tree = lowlight.highlight("plaintext", code) as unknown as HastNode;
-  }
-
-  if (!tree) {
+  if (!lang || !hasLanguage) {
     return escapeHtml(code);
   }
 
-  return hastToHtml(tree);
+  const tree = lowlight.highlight(lang as string, code);
+  return tree ? hastToHtml(tree) : escapeHtml(code);
 }
 
 export function markdownToHtml(markdown: string, options: MarkdownOptions = {}) {

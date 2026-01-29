@@ -4,26 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { del, get, post, put } from "@/lib/apiClient";
-import { isAuthed, getMyId } from "@/lib/auth";
+import { getMyId, isAuthed, setMyProfileImage } from "@/lib/auth";
 
-const BG_COLORS = [
-  "bg-red-200", "bg-orange-200", "bg-amber-200",
-  "bg-yellow-200", "bg-lime-200", "bg-green-200",
-  "bg-emerald-200", "bg-teal-200", "bg-cyan-200",
-  "bg-sky-200", "bg-blue-200", "bg-indigo-200",
-  "bg-violet-200", "bg-purple-200", "bg-fuchsia-200",
-  "bg-pink-200", "bg-rose-200"
-];
-
-const getProfileColor = (nickname: string) => {
-  if (!nickname) return "bg-gray-200";
-  let hash = 0;
-  for (let i = 0; i < nickname.length; i++) {
-    hash = nickname.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const index = Math.abs(hash) % BG_COLORS.length;
-  return BG_COLORS[index];
-};
+const fallbackAvatar =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e2e8f0"/><stop offset="100%" stop-color="#cbd5f5"/></linearGradient></defs><rect width="96" height="96" rx="48" fill="url(#g)"/><circle cx="48" cy="38" r="16" fill="#ffffff"/><path d="M20 80c4-16 20-24 28-24s24 8 28 24" fill="#ffffff"/></svg>'
+  );
 
 interface UserData {
   id: number;
@@ -60,6 +47,7 @@ export default function MyPage() {
       .then((res) => {
         setUser(res.data);
         setPreview(res.data.profileImageUrl || "");
+        setMyProfileImage(res.data.profileImageUrl ?? null);
       })
       .catch((err) => {
         console.error("내 정보 로드 실패", err);
@@ -103,6 +91,7 @@ export default function MyPage() {
         if (!prev) return null;
         return { ...prev, profileImageUrl: nextUrl };
       });
+      setMyProfileImage(nextUrl);
 
       toast.success("프로필 이미지가 변경되었습니다.");
     } catch (err: any) {
@@ -133,6 +122,7 @@ export default function MyPage() {
         return { ...prev, profileImageUrl: null };
       });
       setPreview("");
+      setMyProfileImage(null);
 
       toast.success("프로필 이미지가 삭제되었습니다.");
     } catch (err: any) {
@@ -183,26 +173,17 @@ export default function MyPage() {
     );
   }
 
-  const initial = user.nickname.charAt(0).toUpperCase();
-  const bgColor = getProfileColor(user.nickname);
-
   return (
     <div className="max-w-md mx-auto mt-20 p-6 bg-white rounded-xl shadow-md border border-gray-100">
       <h1 className="text-2xl font-bold text-center mb-8 text-gray-800">마이페이지</h1>
 
       <div className="flex flex-col items-center gap-6">
         <div className="relative group w-32 h-32">
-          {user.profileImageUrl ? (
-            <img
-              src={preview || user.profileImageUrl}
-              alt="Profile"
-              className="w-full h-full rounded-full object-cover border-2 border-gray-100 shadow-sm"
-            />
-          ) : (
-            <div className={`w-full h-full rounded-full ${bgColor} flex items-center justify-center border-2 border-gray-100 shadow-sm`}>
-              <span className="text-6xl font-bold text-white/90">{initial}</span>
-            </div>
-          )}
+          <img
+            src={preview || user.profileImageUrl || fallbackAvatar}
+            alt="Profile"
+            className="w-full h-full rounded-full object-cover border-2 border-gray-100 shadow-sm"
+          />
 
           {isUploading ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">

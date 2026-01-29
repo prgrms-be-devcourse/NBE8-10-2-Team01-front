@@ -30,6 +30,10 @@ export function removeToken(storage?: TokenStorage) {
     store?.removeItem("jwt");
     store?.removeItem("id");
     store?.removeItem("nickname");
+    const keys = Object.keys(store ?? {}).filter((key) =>
+      key.startsWith("profileImageUrl:")
+    );
+    keys.forEach((key) => store?.removeItem(key));
   } else {
     localStorage.removeItem("jwt");
     localStorage.removeItem("id");
@@ -37,6 +41,12 @@ export function removeToken(storage?: TokenStorage) {
     sessionStorage.removeItem("jwt");
     sessionStorage.removeItem("id");
     sessionStorage.removeItem("nickname");
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("profileImageUrl:"))
+      .forEach((key) => localStorage.removeItem(key));
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith("profileImageUrl:"))
+      .forEach((key) => sessionStorage.removeItem(key));
   }
 
   window.dispatchEvent(new CustomEvent("auth-change"));
@@ -66,4 +76,34 @@ export function getMyNickname(storage?: TokenStorage): string | null {
   }
   if (typeof window === "undefined") return null;
   return localStorage.getItem("nickname") ?? sessionStorage.getItem("nickname");
+}
+
+export function getMyProfileImage(storage?: TokenStorage): string | null {
+  const id = getMyId(storage);
+  if (!id) return null;
+  const key = `profileImageUrl:${id}`;
+  if (storage) {
+    const store = getStorage(storage);
+    return store?.getItem(key) ?? null;
+  }
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+}
+
+export function setMyProfileImage(
+  url: string | null,
+  storage: TokenStorage = "local"
+) {
+  const store = getStorage(storage);
+  const id = getMyId(storage);
+  if (!store || !id) return;
+  const key = `profileImageUrl:${id}`;
+  if (!url) {
+    store.removeItem(key);
+  } else {
+    store.setItem(key, url);
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("auth-change"));
+  }
 }

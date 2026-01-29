@@ -50,10 +50,11 @@ export default function GNB() {
     let active = true;
     const fetchMember = async () => {
       try {
-        const response = await get(`/api/members/id/${myId}`, { withAuth: true });
+        const response = await get<MemberInfo>(`/api/members/id/${myId}`, {
+          withAuth: true,
+        });
         if (!active) return;
-        const data = (response.data as { data?: MemberInfo })?.data;
-        if (data) setMember(data);
+        setMember(response.data);
       } catch (error) {
         console.error("Failed to load member info", error);
       }

@@ -48,7 +48,7 @@ type TemplateFormState = {
   content: string;
 };
 
-export default function WritePage() {
+function WritePageClient() {
   const [title, setTitle] = React.useState("");
   const [tagInput, setTagInput] = React.useState("");
   const [tags, setTags] = React.useState<string[]>([]);
@@ -599,6 +599,10 @@ export default function WritePage() {
     event.preventDefault();
     const next = tagInput.trim();
     if (!next) return;
+    if (next.length > 10) {
+      toast.error("해시태그는 최대 10글자까지 가능합니다.");
+      return;
+    }
     if (tags.includes(next)) {
       setTagInput("");
       return;
@@ -620,11 +624,10 @@ export default function WritePage() {
         setTitle(data.title ?? "");
         setEditThumbnail(data.thumbnail ?? "");
         setTags(Array.isArray(data.hashtags) ? data.hashtags : []);
-        const html = markdownToHtml(data.content ?? "", {
-          preserveEmptyLines: true,
-          highlight: false,
+        const rawContent = data.content ?? "";
+        editor.commands.setContent(rawContent, {
+          parseOptions: { preserveWhitespace: "full" },
         });
-        editor.commands.setContent(html);
         editor.commands.focus("end");
       } catch (error) {
         console.error(error);
@@ -798,7 +801,8 @@ export default function WritePage() {
         <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto bg-white/70 p-6 backdrop-blur">
           <input
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            maxLength={30}
+            onChange={(event) => setTitle(event.target.value.slice(0, 30))}
             placeholder="제목을 입력하세요"
             className="w-full rounded-2xl border border-transparent bg-white/70 px-4 py-3 text-2xl font-semibold outline-none placeholder:text-neutral-400 shadow-sm transition focus:border-neutral-300 focus:bg-white"
           />
@@ -806,7 +810,8 @@ export default function WritePage() {
           <div className="flex flex-col gap-2">
             <input
               value={tagInput}
-              onChange={(event) => setTagInput(event.target.value)}
+              maxLength={10}
+              onChange={(event) => setTagInput(event.target.value.slice(0, 10))}
               onKeyDown={handleTagKeyDown}
               placeholder="해시태그를 입력하세요 (Enter)"
               className="w-full rounded-2xl border border-transparent bg-white/70 px-4 py-2 text-sm outline-none placeholder:text-neutral-400 shadow-sm transition focus:border-neutral-300 focus:bg-white"
@@ -1295,5 +1300,21 @@ export default function WritePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function WritePage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-24 text-neutral-900">
+          <div className="mx-auto w-full max-w-4xl text-sm text-neutral-500">
+            불러오는 중...
+          </div>
+        </div>
+      }
+    >
+      <WritePageClient />
+    </React.Suspense>
   );
 }

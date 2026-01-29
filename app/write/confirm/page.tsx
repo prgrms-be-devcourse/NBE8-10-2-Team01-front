@@ -141,18 +141,20 @@ export default function WriteConfirmPage() {
       label: `업로드 썸네일 ${index + 1}`,
       source: "upload" as const,
     }));
-    const fromDefaults = defaultThumbnails
-      .map((item) => {
+    const fromDefaults = defaultThumbnails.reduce<ThumbnailOption[]>(
+      (acc, item) => {
         const previewUrl = defaultPreviewUrls[item.id];
-        if (!previewUrl) return null;
-        return {
+        if (!previewUrl) return acc;
+        acc.push({
           id: item.id,
           url: previewUrl,
           label: item.label,
           source: "default" as const,
-        };
-      })
-      .filter((item): item is ThumbnailOption => item !== null);
+        });
+        return acc;
+      },
+      []
+    );
     return [...fromExisting, ...fromContent, ...fromUploads, ...fromDefaults];
   }, [contentImageUrls, defaultPreviewUrls, defaultThumbnails, draft, uploadedThumbs]);
 
