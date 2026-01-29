@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { get } from "@/lib/apiClient";
-import { isAuthed, getMyId, getToken } from "@/lib/auth";
+import { toast } from "react-hot-toast";
+import { del, get, post, put } from "@/lib/apiClient";
+import { isAuthed, getMyId } from "@/lib/auth";
 
 const BG_COLORS = [
   "bg-red-200", "bg-orange-200", "bg-amber-200",
@@ -55,17 +56,14 @@ export default function MyPage() {
       return;
     }
 
-    get(`api/members/id/${myId}`, {
-      headers: { Authorization: `Bearer ${getToken()}` }
-    })
+    get<UserData>(`/api/members/id/${myId}`, { withAuth: true })
       .then((res) => {
-        const userData = res.data as UserData;
-        setUser(userData);
-        setPreview(userData.profileImageUrl || "");
+        setUser(res.data);
+        setPreview(res.data.profileImageUrl || "");
       })
       .catch((err) => {
         console.error("내 정보 로드 실패", err);
-        alert("정보를 불러오지 못했습니다.");
+        toast.error("정보를 불러오지 못했습니다.");
       });
   }, [router]);
 
@@ -74,14 +72,14 @@ export default function MyPage() {
     if (!file || !user) return;
 
     if (file.size > 20 * 1024 * 1024) {
-      alert("파일 크기는 20MB를 초과할 수 없습니다.");
+      toast.error("파일 크기는 20MB를 초과할 수 없습니다.");
       return;
     }
 
     const validExtensions = ["jpg", "jpeg", "png", "gif"];
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (!ext || !validExtensions.includes(ext)) {
-      alert("jpg, jpeg, png, gif 파일만 업로드 가능합니다.");
+      toast.error("jpg, jpeg, png, gif 파일만 업로드 가능합니다.");
       return;
     }
 
@@ -94,37 +92,22 @@ export default function MyPage() {
     formData.append("file", file);
 
     try {
-      const token = getToken();
+      const res = await post<{ profileImageUrl?: string | null }>(
+        `/api/members/${user.id}/profile-image`,
+        formData,
+        { withAuth: true }
+      );
+      const nextUrl = res.data?.profileImageUrl || objectUrl;
 
-      // ✅ 수정: 백엔드 경로에 맞춤
-      const res = await fetch(`http://localhost:8080/api/members/${user.id}/profile-image`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "업로드 실패");
-      }
-
-      const data = await res.json();
-      
-      setUser(prev => {
+      setUser((prev) => {
         if (!prev) return null;
-        return { 
-          ...prev, 
-          profileImageUrl: data.data?.profileImageUrl || objectUrl 
-        };
+        return { ...prev, profileImageUrl: nextUrl };
       });
 
-      alert("프로필 이미지가 변경되었습니다.");
-
+      toast.success("프로필 이미지가 변경되었습니다.");
     } catch (err: any) {
       console.error("이미지 업로드 실패:", err);
-      alert(err.message || "이미지 변경에 실패했습니다.");
+      toast.error(err.message || "이미지 변경에 실패했습니다.");
       
       setPreview(oldPreview);
       URL.revokeObjectURL(objectUrl);
@@ -143,32 +126,18 @@ export default function MyPage() {
     setIsDeleting(true);
   
     try {
-      const token = getToken();
-  
-      const res = await fetch(`http://localhost:8080/api/members/${user.id}/profile-image`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-  
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "삭제 실패");
-      }
-  
-      // 성공 시 상태 업데이트
-      setUser(prev => {
+      await del(`/api/members/${user.id}/profile-image`, { withAuth: true });
+
+      setUser((prev) => {
         if (!prev) return null;
         return { ...prev, profileImageUrl: null };
       });
       setPreview("");
-  
-      alert("프로필 이미지가 삭제되었습니다.");
-  
+
+      toast.success("프로필 이미지가 삭제되었습니다.");
     } catch (err: any) {
       console.error("이미지 삭제 실패:", err);
-      alert(err.message || "이미지 삭제에 실패했습니다.");
+      toast.error(err.message || "이미지 삭제에 실패했습니다.");
     } finally {
       setIsDeleting(false);
     }
@@ -176,7 +145,8 @@ export default function MyPage() {
 
   const handleNicknameUpdate = async () => {
     if (!newNickname.trim()) {
-      return alert("닉네임을 입력해주세요.");
+      toast.error("닉네임을 입력해주세요.");
+      return;
     }
 
     if (newNickname === user?.nickname) {
@@ -185,37 +155,23 @@ export default function MyPage() {
     }
 
     if (newNickname.length < 2 || newNickname.length > 20) {
-      return alert("닉네임은 2~20자 사이여야 합니다.");
+      toast.error("닉네임은 2~20자 사이여야 합니다.");
+      return;
     }
 
     try {
-      const token = getToken();
+      await put(`/api/members/update`, { nickname: newNickname }, { withAuth: true });
 
-      const res = await fetch(`http://localhost:8080/api/members/update`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ nickname: newNickname }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "닉네임 수정 실패");
-      }
-
-      setUser(prev => {
+      setUser((prev) => {
         if (!prev) return null;
         return { ...prev, nickname: newNickname };
       });
 
       setIsEditing(false);
-      alert("닉네임이 변경되었습니다!");
-
+      toast.success("닉네임이 변경되었습니다!");
     } catch (err: any) {
       console.error("닉네임 변경 실패:", err);
-      alert(err.message || "닉네임 변경에 실패했습니다.");
+      toast.error(err.message || "닉네임 변경에 실패했습니다.");
     }
   };
 
@@ -279,7 +235,7 @@ export default function MyPage() {
               <div className="flex items-center gap-2 mb-1">
                 <input
                   type="text"
-                  className="border border-blue-400 p-1 px-2 rounded text-lg font-medium text-center w-40 focus:outline-none ring-2 ring-blue-100"
+                  className="border border-blue-400 p-1 px-2 rounded text-lg font-medium text-center w-40 bg-white text-black focus:outline-none ring-2 ring-blue-100"
                   value={newNickname}
                   onChange={(e) => setNewNickname(e.target.value)}
                   onKeyPress={(e) => e.key === "Enter" && handleNicknameUpdate()}

@@ -6,6 +6,7 @@ export type WriteDraft = {
   title: string;
   content: string;
   tags: string[];
+  hashtags?: string[];
   postId?: number;
   thumbnail?: string | null;
 };
