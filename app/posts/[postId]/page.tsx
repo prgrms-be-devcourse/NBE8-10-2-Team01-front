@@ -191,6 +191,7 @@ export default function PostDetailPage() {
   const [replyOpen, setReplyOpen] = React.useState<Record<number, boolean>>({});
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [editingContent, setEditingContent] = React.useState("");
+  const [authorLinkId, setAuthorLinkId] = React.useState<number | null>(null);
   const router = useRouter();
   const initialCommentsAppliedRef = React.useRef<string | null>(null);
   const commentsCacheHitRef = React.useRef(false);
@@ -424,19 +425,19 @@ export default function PostDetailPage() {
   };
 
   const loadReplies = React.useCallback(
-    async (parentId: number) => {
+    async (parentId: number, force = false) => {
       const current = replyState[parentId];
-      const nextPage = current ? current.page + 1 : 0;
-      if (current?.pagesFetched.has(nextPage)) return;
+      const nextPage = force ? 0 : current ? current.page + 1 : 0;
+      if (!force && current?.pagesFetched.has(nextPage)) return;
 
       setReplyState((prev) => ({
         ...prev,
         [parentId]: {
-          items: prev[parentId]?.items ?? [],
-          page: prev[parentId]?.page ?? 0,
-          hasNext: prev[parentId]?.hasNext ?? true,
+          items: force ? [] : prev[parentId]?.items ?? [],
+          page: force ? 0 : prev[parentId]?.page ?? 0,
+          hasNext: force ? true : prev[parentId]?.hasNext ?? true,
           loading: true,
-          pagesFetched: prev[parentId]?.pagesFetched ?? new Set<number>(),
+          pagesFetched: force ? new Set<number>() : prev[parentId]?.pagesFetched ?? new Set<number>(),
         },
       }));
 
@@ -455,7 +456,7 @@ export default function PostDetailPage() {
           return {
             ...prev,
             [parentId]: {
-              items: mergeById(prevState?.items ?? [], list),
+              items: force ? list : mergeById(prevState?.items ?? [], list),
               page: nextPage,
               hasNext: !isLast,
               loading: false,
@@ -468,11 +469,11 @@ export default function PostDetailPage() {
         setReplyState((prev) => ({
           ...prev,
           [parentId]: {
-            items: prev[parentId]?.items ?? [],
-            page: prev[parentId]?.page ?? 0,
-            hasNext: prev[parentId]?.hasNext ?? false,
+            items: force ? [] : prev[parentId]?.items ?? [],
+            page: force ? 0 : prev[parentId]?.page ?? 0,
+            hasNext: force ? false : prev[parentId]?.hasNext ?? false,
             loading: false,
-            pagesFetched: prev[parentId]?.pagesFetched ?? new Set<number>(),
+            pagesFetched: force ? new Set<number>() : prev[parentId]?.pagesFetched ?? new Set<number>(),
           },
         }));
         toast.error("답글을 불러오지 못했습니다.");
@@ -586,26 +587,11 @@ export default function PostDetailPage() {
         return;
       }
       try {
-        const response = await post(
+        await post(
           `/api/posts/${postId}/comments`,
           { content, parentCommentId: parentId },
           { withAuth: true }
         );
-        const created = response.data as ReplyInfoRes | CommentInfoRes | null;
-        const createdReply: ReplyInfoRes = {
-          id: (created as any)?.id ?? Date.now(),
-          content,
-          parentCommentId: parentId,
-          authorId: (created as any)?.authorId ?? myId ?? -1,
-          authorNickname:
-            (created as any)?.nickname ??
-            (created as any)?.authorNickname ??
-            myNickname ??
-            "작성자",
-          createDate: (created as any)?.createDate ?? new Date().toISOString(),
-          modifyDate: (created as any)?.modifyDate ?? null,
-        };
-
         setReplyInputs((prev) => ({ ...prev, [parentId]: "" }));
         setReplyOpen((prev) => ({ ...prev, [parentId]: true }));
         setComments((prev) =>
@@ -613,28 +599,14 @@ export default function PostDetailPage() {
             item.id === parentId ? { ...item, replyCount: item.replyCount + 1 } : item
           )
         );
-        setReplyState((prev) => {
-          const current = prev[parentId];
-          const pagesFetched = new Set(current?.pagesFetched ?? []);
-          pagesFetched.add(current?.page ?? 0);
-          return {
-            ...prev,
-            [parentId]: {
-              items: mergeById([createdReply], current?.items ?? []),
-              page: current?.page ?? 0,
-              hasNext: current?.hasNext ?? false,
-              loading: false,
-              pagesFetched,
-            },
-          };
-        });
+        await loadReplies(parentId, true);
         toast.success("답글을 작성했습니다.");
       } catch (error) {
         console.error(error);
         toast.error("답글 작성에 실패했습니다.");
       }
     },
-    [myId, myNickname, postId, replyInputs]
+    [loadReplies, postId, replyInputs]
   );
 
   const startEditPost = React.useCallback(() => {
@@ -655,6 +627,31 @@ export default function PostDetailPage() {
       toast.error("게시글 삭제에 실패했습니다.", { duration: 4000 });
     }
   }, [postId]);
+
+  React.useEffect(() => {
+    const authorId = getPostAuthorId(postData);
+    const nickname = postData?.nickname;
+    if (!nickname || authorId) {
+      setAuthorLinkId(null);
+      return;
+    }
+    let active = true;
+    const run = async () => {
+      try {
+        const response = await get<{ id: number }>(`/api/members/nickname/${nickname}`, {
+          withAuth: true,
+        });
+        if (!active) return;
+        setAuthorLinkId(response.data?.id ?? null);
+      } catch (error) {
+        console.error("Failed to resolve author id", error);
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [postData]);
 
   if (loading) {
     return (
@@ -687,6 +684,7 @@ export default function PostDetailPage() {
     highlight: true,
   });
   const postAuthorId = getPostAuthorId(postData);
+  const resolvedAuthorId = postAuthorId ?? authorLinkId;
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 pb-10 pt-20 text-neutral-900">
@@ -714,8 +712,11 @@ export default function PostDetailPage() {
             )}
           </div>
           <div className="mt-3 flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
-            {postAuthorId ? (
-              <Link href={`/members/${postAuthorId}/posts`} className="flex items-center gap-3">
+            {resolvedAuthorId ? (
+              <Link
+                href={`/members/${resolvedAuthorId}/posts`}
+                className="flex items-center gap-3"
+              >
                 <img
                   src={getProfileUrlOrFallback(postData)}
                   alt=""

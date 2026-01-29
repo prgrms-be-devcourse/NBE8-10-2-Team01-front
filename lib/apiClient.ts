@@ -107,6 +107,10 @@ export async function request<T = unknown>(
   if (!isFormData && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
+  if (!headers["Cache-Control"]) {
+    headers["Cache-Control"] = "no-store";
+    headers.Pragma = "no-cache";
+  }
 
   if (options.withAuth) {
     const token = options.token ?? getAuthToken();
@@ -119,6 +123,7 @@ export async function request<T = unknown>(
     method: options.method ?? (options.body ? "POST" : "GET"),
     headers,
     credentials: "include",
+    cache: "no-store",
   };
 
   if (options.body !== undefined) {

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { getMyId, isAuthed, removeToken } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { get } from "@/lib/apiClient";
 
 type MemberInfo = {
@@ -26,6 +26,7 @@ export default function GNB() {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
 
   React.useEffect(() => {
     const handleAuthChange = () => {
@@ -63,7 +64,7 @@ export default function GNB() {
     return () => {
       active = false;
     };
-  }, [loggedIn]);
+  }, [loggedIn, pathname]);
 
   React.useEffect(() => {
     if (!menuOpen) return;

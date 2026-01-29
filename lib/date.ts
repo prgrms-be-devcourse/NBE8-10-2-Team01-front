@@ -1,4 +1,5 @@
 type DateInput = Date | string | number;
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function toDate(input: DateInput): Date | null {
   const date = input instanceof Date ? input : new Date(input);
@@ -8,30 +9,32 @@ function toDate(input: DateInput): Date | null {
 export function formatDate(input: DateInput, locale = "en-US") {
   const date = toDate(input);
   if (!date) return "";
+  const kstDate = new Date(date.getTime() + KST_OFFSET_MS);
   return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "short",
     day: "2-digit",
-  }).format(date);
+  }).format(kstDate);
 }
 
 export function formatDateTime(input: DateInput, locale = "en-US") {
   const date = toDate(input);
   if (!date) return "";
+  const kstDate = new Date(date.getTime() + KST_OFFSET_MS);
   return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "short",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date);
+  }).format(kstDate);
 }
 
 export function formatRelative(input: DateInput, now = new Date()) {
   const date = toDate(input);
   if (!date) return "";
 
-  const diffMs = date.getTime() - now.getTime();
+  const diffMs = (date.getTime() + KST_OFFSET_MS) - (now.getTime() + KST_OFFSET_MS);
   const diff = Math.round(diffMs / 1000);
   const abs = Math.abs(diff);
 
