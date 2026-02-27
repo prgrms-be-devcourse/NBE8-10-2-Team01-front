@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import GNB from "@/components/ui/navigation/GNB";
+import AuthObserver from "@/components/auth/AuthObserver";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,9 +27,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <AuthObserver />
         <GNB />
         <Toaster
           position="top-center"
@@ -42,8 +42,7 @@ export default function RootLayout({
               color: "#ffffff",
               fontSize: "14px",
               fontWeight: "500",
-              boxShadow:
-                "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06)",
+              boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06)",
             },
             success: {
               duration: 2000,

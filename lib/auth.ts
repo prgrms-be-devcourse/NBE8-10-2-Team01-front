@@ -56,6 +56,34 @@ export function isAuthed() {
   return !!getToken();
 }
 
+// 쿠키에서 AT 읽기
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(";").shift() ?? null;
+  return null;
+}
+
+// 쿠키 삭제
+function deleteCookie(name: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax;`;
+}
+
+// 쿠키에서 토큰만 낚아채는 함수
+export function captureTokenFromCookie(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const accessToken = getCookie("accessToken");
+  if (accessToken) {
+    setToken(accessToken); // localStorage에 저장
+    deleteCookie("accessToken"); // 즉시 삭제
+    return accessToken;
+  }
+  return null;
+}
+
 // ✅ 추가: ID 가져오기
 export function getMyId(storage?: TokenStorage): number | null {
   if (storage) {
