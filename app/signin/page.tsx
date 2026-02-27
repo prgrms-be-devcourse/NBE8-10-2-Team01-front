@@ -9,6 +9,7 @@ import { PasswordInput } from "@/components/ui/inputs/PasswordInput";
 import { ColorButton } from "@/components/ui/buttons/ColorButton";
 import { post, ApiError } from "@/lib/apiClient";
 import { setToken } from "@/lib/auth";
+import SocialLoginGroup from "@/components/ui/buttons/SocialLoginGroup";
 
 export default function SigninPage() {
   const [email, setEmail] = React.useState("");
@@ -72,6 +73,7 @@ export default function SigninPage() {
                 </ColorButton>
               </div>
             </form>
+            <SocialLoginGroup />
           </div>
         </div>
       </div>
