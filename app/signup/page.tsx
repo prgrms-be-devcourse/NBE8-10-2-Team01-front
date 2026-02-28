@@ -8,6 +8,7 @@ import { TextInput } from "@/components/ui/inputs/TextInput";
 import { PasswordInput } from "@/components/ui/inputs/PasswordInput";
 import { ColorButton } from "@/components/ui/buttons/ColorButton";
 import { post, ApiError } from "@/lib/apiClient";
+import SocialLoginGroup from "@/components/ui/buttons/SocialLoginGroup";
 
 export default function SignupPage() {
   const [email, setEmail] = React.useState("");
@@ -92,6 +93,7 @@ export default function SignupPage() {
                 </ColorButton>
               </div>
             </form>
+            <SocialLoginGroup />
           </div>
         </div>
       </div>
