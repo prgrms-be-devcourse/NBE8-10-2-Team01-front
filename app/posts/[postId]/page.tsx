@@ -33,6 +33,8 @@ type ReplyInfoRes = {
   profileUrl?: string | null;
   profileImageUrl?: string | null;
   profileImage?: string | null;
+  likeCount?: number;
+  likesCount?: number;
   createDate: string | null;
   modifyDate: string | null;
 };
@@ -50,6 +52,7 @@ type CommentInfoRes = {
   createDate: string | null;
   modifyDate: string | null;
   replyCount: number;
+  likeCount?: number;
   previewReplies?: Slice<ReplyInfoRes> | null;
 };
 
@@ -172,6 +175,10 @@ function mergeById<T extends { id: number }>(prev: T[], next: T[]) {
   return Array.from(map.values());
 }
 
+function getCommentLikeCount(item?: { likeCount?: number; likesCount?: number }) {
+  return item?.likeCount ?? item?.likesCount ?? 0;
+}
+
 export default function PostDetailPage() {
   const params = useParams<{ postId: string }>();
   const postId = params?.postId;
@@ -189,6 +196,8 @@ export default function PostDetailPage() {
   const [replyState, setReplyState] = React.useState<Record<number, ReplyState>>({});
   const [replyInputs, setReplyInputs] = React.useState<Record<number, string>>({});
   const [replyOpen, setReplyOpen] = React.useState<Record<number, boolean>>({});
+  const [likedCommentIds, setLikedCommentIds] = React.useState<Set<number>>(() => new Set());
+  const [likeLoadingIds, setLikeLoadingIds] = React.useState<Set<number>>(() => new Set());
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [editingContent, setEditingContent] = React.useState("");
   const [authorLinkId, setAuthorLinkId] = React.useState<number | null>(null);
@@ -251,6 +260,8 @@ export default function PostDetailPage() {
   React.useEffect(() => {
     initialCommentsAppliedRef.current = null;
     commentsCacheHitRef.current = false;
+    setLikedCommentIds(new Set());
+    setLikeLoadingIds(new Set());
   }, [postId]);
 
   const loadPost = React.useCallback(async () => {
@@ -609,6 +620,87 @@ export default function PostDetailPage() {
     [loadReplies, postId, replyInputs]
   );
 
+  const handleToggleCommentLike = React.useCallback(
+    async (commentId: number, parentCommentId?: number) => {
+      if (!isLoggedIn) {
+        toast.error("로그인 후 좋아요를 누를 수 있습니다.");
+        return;
+      }
+      if (likeLoadingIds.has(commentId)) return;
+
+      setLikeLoadingIds((prev) => new Set(prev).add(commentId));
+      try {
+        const response = await post<number>(`/api/comments/${commentId}`, {}, { withAuth: true });
+        const message = response.message ?? "";
+        const wasLiked = likedCommentIds.has(commentId);
+        const nextLiked = message.includes("취소")
+          ? false
+          : message.includes("좋아요")
+            ? true
+            : !wasLiked;
+        const delta = message.includes("취소")
+          ? -1
+          : message.includes("좋아요")
+            ? 1
+            : nextLiked === wasLiked
+              ? 0
+              : nextLiked
+                ? 1
+                : -1;
+
+        setLikedCommentIds((prev) => {
+          const next = new Set(prev);
+          if (nextLiked) next.add(commentId);
+          else next.delete(commentId);
+          return next;
+        });
+
+        if (parentCommentId) {
+          setReplyState((prev) => {
+            const parent = prev[parentCommentId];
+            if (!parent) return prev;
+            return {
+              ...prev,
+              [parentCommentId]: {
+                ...parent,
+                items: parent.items.map((item) => {
+                  if (item.id !== commentId) return item;
+                  const currentLikeCount = getCommentLikeCount(item);
+                  return {
+                    ...item,
+                    likeCount: Math.max(0, currentLikeCount + delta),
+                  };
+                }),
+              },
+            };
+          });
+          return;
+        }
+
+        setComments((prev) =>
+          prev.map((item) => {
+            if (item.id !== commentId) return item;
+            const currentLikeCount = getCommentLikeCount(item);
+            return {
+              ...item,
+              likeCount: Math.max(0, currentLikeCount + delta),
+            };
+          })
+        );
+      } catch (error) {
+        console.error(error);
+        toast.error("좋아요 처리에 실패했습니다.");
+      } finally {
+        setLikeLoadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(commentId);
+          return next;
+        });
+      }
+    },
+    [isLoggedIn, likeLoadingIds, likedCommentIds]
+  );
+
   const startEditPost = React.useCallback(() => {
     if (!postId) return;
     router.push(`/write?mode=edit&postId=${postId}`);
@@ -878,6 +970,32 @@ export default function PostDetailPage() {
                     <div className="mt-3 flex gap-3 text-xs font-semibold text-neutral-600">
                       <button
                         type="button"
+                        onClick={() => handleToggleCommentLike(comment.id)}
+                        disabled={likeLoadingIds.has(comment.id)}
+                        className="inline-flex items-center gap-1.5 cursor-pointer transition hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill={likedCommentIds.has(comment.id) ? "currentColor" : "none"}
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M14 10V5a3 3 0 0 0-3-3l-1 7H5.8a2 2 0 0 0-2 1.8l-.8 8A2 2 0 0 0 5 21h9a2 2 0 0 0 1.9-1.4l2.1-7A2 2 0 0 0 16.1 10H14Z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M7 10v11"
+                          />
+                        </svg>
+                        좋아요 {getCommentLikeCount(comment)}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() =>
                           setReplyOpen((prev) => ({ ...prev, [comment.id]: !isReplyOpen }))
                         }
@@ -992,6 +1110,38 @@ export default function PostDetailPage() {
                             ) : (
                               <div className="mt-1 whitespace-pre-wrap break-words">
                                 {reply.content}
+                              </div>
+                            )}
+                            {!isEditingReply && (
+                              <div className="mt-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleToggleCommentLike(reply.id, reply.parentCommentId)
+                                  }
+                                  disabled={likeLoadingIds.has(reply.id)}
+                                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-neutral-600 transition hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <svg
+                                    className="h-3.5 w-3.5"
+                                    viewBox="0 0 24 24"
+                                    fill={likedCommentIds.has(reply.id) ? "currentColor" : "none"}
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M14 10V5a3 3 0 0 0-3-3l-1 7H5.8a2 2 0 0 0-2 1.8l-.8 8A2 2 0 0 0 5 21h9a2 2 0 0 0 1.9-1.4l2.1-7A2 2 0 0 0 16.1 10H14Z"
+                                    />
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M7 10v11"
+                                    />
+                                  </svg>
+                                  좋아요 {getCommentLikeCount(reply)}
+                                </button>
                               </div>
                             )}
 
